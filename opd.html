@@ -1169,7 +1169,7 @@
             </section>
           </div>
 
-          <div class="opd-footer"><strong>Workbook-derived:</strong> A single open order may count separately under PM, DOT, A/C, and LTS. ANNUAL INSPECTION routes to DOT and GARDA AC CHECK routes to A/C whenever those phrases appear anywhere inside the combined VRO task text, regardless of the order’s REPCLASS. PM remains driven by a PM REPCLASS and counts approved PM task names or other remaining PM-repclass task content after the separate DOT, A/C, LTS, and coolant phrases are removed. Repeated task phrases on one order are deduplicated by unique Order + program. Achievable Compliance uses the current GARDA FLASH percentage plus unique currently overdue VINs with valid non-unassigned ECDs; each date-bucket row shows the compliance achievable from completing the eligible VINs in that bucket. Scheduling Gap uses unique VINs from the PM, DOT, and LTS tabs that are overdue or coming due and do not yet have every required task on a non-unassigned VRO with a valid ECD. Duplicate VIN interval rows use OR logic: if mileage or time/frequency reaches the threshold, the VIN is controlled by that requirement.</div>
+          <div class="opd-footer"><strong>Workbook-derived:</strong> A single open order may count separately under PM, DOT, A/C, and LTS. ANNUAL INSPECTION routes to DOT and GARDA AC CHECK routes to A/C whenever those phrases appear anywhere inside the combined VRO task text, regardless of the order’s REPCLASS. PM remains driven by a PM REPCLASS and counts approved PM task names or other remaining PM-repclass task content after the separate DOT, A/C, LTS, and coolant phrases are removed. Repeated task phrases on one order are deduplicated by unique Order + program. Achievable Compliance uses the current GARDA FLASH percentage plus unique currently overdue VINs with valid non-unassigned ECDs; each date-bucket row shows the compliance achievable from completing the eligible VINs in that bucket. Scheduling Gap uses unique VINs from the AC, PM, DOT, and LTS tabs that are overdue or coming due and do not yet have every required task on a non-unassigned VRO with a valid ECD. Duplicate VIN interval rows use OR logic: if mileage or time/frequency reaches the threshold, the VIN is controlled by that requirement.</div>
         </div>
       </div>
     </section>
@@ -2024,7 +2024,7 @@ function parseGardaFlash(aoa,warnings){
     }
   }
 
-  const expectedPrograms=["pm","dot","lts"];
+  const expectedPrograms=["pm","dot","lts","ac"];
   const missingPrograms=expectedPrograms
     .filter(key=>isBlank(maintenance[key].compliance))
     .map(key=>PROGRAMS.find(program=>program.key===key)?.label||key);
@@ -2142,6 +2142,7 @@ function parseWorkbook(buffer){
   const useful=sheetAoa(workbook,name=>name.includes("useful")&&!name.includes("dod")&&!name.includes("day over day"));
   const dod=sheetAoa(workbook,name=>name.includes("useful")&&(name.includes("dod")||name.includes("day over day")));
   const gardaFlash=sheetAoa(workbook,name=>name.includes("garda flash"));
+  const acSheet=sheetAoa(workbook,name=>name.trim()==="ac");
   const pmSheet=sheetAoa(workbook,name=>name.trim()==="pm");
   const dotSheet=sheetAoa(workbook,name=>name.trim()==="dot");
   const ltsSheet=sheetAoa(workbook,name=>name.trim()==="lts");
@@ -2150,6 +2151,7 @@ function parseWorkbook(buffer){
   if(!rep.aoa.length)throw new Error("REPCLASS tab was not found.");
   if(!useful.aoa.length)throw new Error("Useful % tab was not found.");
   if(!gardaFlash.aoa.length)throw new Error("GARDA FLASH tab was not found.");
+  if(!acSheet.aoa.length)warnings.push("AC tab was not found; A/C achievable compliance and scheduling gap will be blank.");
   if(!pmSheet.aoa.length)warnings.push("PM tab was not found; PM achievable compliance and scheduling gap will be blank.");
   if(!dotSheet.aoa.length)warnings.push("DOT tab was not found; DOT achievable compliance and scheduling gap will be blank.");
   if(!ltsSheet.aoa.length)warnings.push("LTS tab was not found; LTS achievable compliance and scheduling gap will be blank.");
@@ -2169,6 +2171,10 @@ function parseWorkbook(buffer){
     [5,"ERS REPORTING"],[6,"CURRENT"],[7,"PREVIOUS"],[8,"DELTA"],
     [10,"VENDOR COVERAGE"],[11,"PAST STATE"],[12,"PRESENT STATE"],[13,"DELTA"]
   ],gardaFlash.name,warnings);
+  if(acSheet.aoa.length)validateHeader(acSheet.aoa,[
+    [6,"VIN"],[7,"COMPCODE_DESC"],[8,"INTERVAL"],[9,"METERTYPE"],
+    [10,"DUE CATEGORY"],[12,"DUEPERCENT"]
+  ],acSheet.name,warnings);
   if(pmSheet.aoa.length)validateHeader(pmSheet.aoa,[
     [5,"VIN"],[6,"COMPCODE_DESC"],[7,"INTERVAL"],[8,"METERTYPE"],
     [9,"DUE CATEGORY"],[11,"DUEPERCENT"]
@@ -2187,6 +2193,7 @@ function parseWorkbook(buffer){
   const usefulPrior=dod.aoa.length?summarizeUseful(usefulRowsByCode(dod.aoa,warnings,dod.name)):null;
   const flash=parseGardaFlash(gardaFlash.aoa,warnings);
   const complianceSources={
+    ac:acSheet.aoa.length?parseComplianceUnitSheet(acSheet.aoa,"ac",acSheet.name,warnings):null,
     pm:pmSheet.aoa.length?parseComplianceUnitSheet(pmSheet.aoa,"pm",pmSheet.name,warnings):null,
     dot:dotSheet.aoa.length?parseComplianceUnitSheet(dotSheet.aoa,"dot",dotSheet.name,warnings):null,
     lts:ltsSheet.aoa.length?parseComplianceUnitSheet(ltsSheet.aoa,"lts",ltsSheet.name,warnings):null
@@ -2196,8 +2203,13 @@ function parseWorkbook(buffer){
   const maintenance={};
   PROGRAMS.forEach(program=>{
     const compliance=flash.maintenance[program.key].compliance;
-    const source=program.key==="ac"?null:complianceSources[program.key];
-    const projection=program.key==="ac"?null:projectedCompliance(program.key,compliance,source,vroResult.maintenanceItems);
+    const source=complianceSources[program.key]||null;
+    const projection=projectedCompliance(
+      program.key,
+      compliance,
+      source,
+      vroResult.maintenanceItems
+    );
     maintenance[program.key]={
       ecd:summarizeMaintenanceItems(vroResult.maintenanceItems,program.key),
       compliance,
@@ -2406,23 +2418,36 @@ function bucketAchievableCell(metric,rowKey){
 function renderMaintenance(){
   $("#maintenance-body").innerHTML=PROGRAMS.map((program,index)=>{
     const metric=dashboardData.maintenance[program.key];
-    let header;
-    if(program.key==="ac"){
-      header=`<tr class="vendor-section-row"><td colspan="6">A/C Compliance</td></tr>`;
-    }else{
-      const missingNote=isBlank(metric.compliance)?'<span class="cell-note">Compliance value not present on GARDA FLASH</span>':'';
-      header=`<tr class="${index?"group-start":""}">
-        <td class="label">${program.label}${missingNote}</td>
-        ${cell(metric.priorCompliance,"percent")}
-        ${cell(metric.compliance,"percent",true)}
-        ${sourceDeltaCell(metric.reportedDelta,metric.priorCompliance,metric.compliance,"percent")}
-        ${projectionCell(metric.achievable,metric.projection,"achievable")}
-        ${projectionCell(metric.gap,metric.projection,"gap")}
-      </tr>`;
-    }
+    const missingNote=isBlank(metric.compliance)
+      ?'<span class="cell-note">Compliance value not present on GARDA FLASH</span>'
+      :'';
+
+    const header=`<tr class="${index?"group-start":""}">
+      <td class="label">${program.label}${missingNote}</td>
+      ${cell(metric.priorCompliance,"percent")}
+      ${cell(metric.compliance,"percent",true)}
+      ${sourceDeltaCell(
+        metric.reportedDelta,
+        metric.priorCompliance,
+        metric.compliance,
+        "percent"
+      )}
+      ${projectionCell(
+        metric.achievable,
+        metric.projection,
+        "achievable"
+      )}
+      ${projectionCell(
+        metric.gap,
+        metric.projection,
+        "gap"
+      )}
+    </tr>`;
+
     const details=MAINTENANCE_ECD_ROWS.map(row=>{
       const prior=metric.priorEcd?.[row.key];
       const current=metric.ecd[row.key];
+
       return `<tr>
         <td class="sub-label">${row.label}</td>
         ${cell(prior)}
@@ -2432,6 +2457,7 @@ function renderMaintenance(){
         <td></td>
       </tr>`;
     }).join("");
+
     return header+details;
   }).join("");
 }
@@ -3086,25 +3112,24 @@ function exportAllTables(){
   // Vended Maintenance
   const maintRows=[["Vended Maintenance","Prior Day","Current Day","Delta","Achievable Compliance","Scheduling Gap"]];
   const maintTypes=[];
-  let acMaintenanceGroupRow=null;
   PROGRAMS.forEach(program=>{
     const metric=dashboardData.maintenance[program.key];
     let rowIndex=maintRows.length;
 
-    if(program.key==="ac"){
-      acMaintenanceGroupRow=rowIndex;
-      maintRows.push(["A/C Compliance",null,null,null,null,null]);
-    }else{
-      maintRows.push([
-        program.label,
-        excelValue(metric.priorCompliance,"percent"),
-        excelValue(metric.compliance,"percent"),
-        excelSourceDelta(metric.reportedDelta,metric.priorCompliance,metric.compliance,"percent"),
-        excelValue(metric.achievable,"percent"),
-        excelValue(metric.gap,"percent")
-      ]);
-      maintTypes.push([rowIndex,"percent",1,5]);
-    }
+    maintRows.push([
+      program.label,
+      excelValue(metric.priorCompliance,"percent"),
+      excelValue(metric.compliance,"percent"),
+      excelSourceDelta(
+        metric.reportedDelta,
+        metric.priorCompliance,
+        metric.compliance,
+        "percent"
+      ),
+      excelValue(metric.achievable,"percent"),
+      excelValue(metric.gap,"percent")
+    ]);
+    maintTypes.push([rowIndex,"percent",1,5]);
 
     MAINTENANCE_ECD_ROWS.forEach(ecd=>{
       rowIndex=maintRows.length;
@@ -3197,8 +3222,7 @@ function exportAllTables(){
     },
     {
       rows:maintRows,
-      types:maintTypes,
-      mergedRows:acMaintenanceGroupRow===null?[]:[acMaintenanceGroupRow]
+      types:maintTypes
     },
     {
       rows:vendorRows,
@@ -3232,20 +3256,11 @@ function exportAllTables(){
     "VR ECD Bucket"
   );
 
-  const maintenanceSheet=makeSheet(maintRows,[34,15,15,15,23,18],maintTypes);
-  if(acMaintenanceGroupRow!==null){
-    maintenanceSheet["!merges"]=(maintenanceSheet["!merges"]||[]).concat([{
-      s:{r:acMaintenanceGroupRow,c:0},
-      e:{r:acMaintenanceGroupRow,c:5}
-    }]);
-    const acGroupRef=XLSX.utils.encode_cell({r:acMaintenanceGroupRow,c:0});
-    maintenanceSheet[acGroupRef].s={
-      ...(maintenanceSheet[acGroupRef].s||{}),
-      font:{name:"Raleway",sz:10,color:{rgb:"334155"},bold:true},
-      fill:{fgColor:{rgb:"ECEFF2"}},
-      alignment:{horizontal:"left",vertical:"center"}
-    };
-  }
+  const maintenanceSheet=makeSheet(
+    maintRows,
+    [34,15,15,15,23,18],
+    maintTypes
+  );
   XLSX.utils.book_append_sheet(
     wb,
     maintenanceSheet,
