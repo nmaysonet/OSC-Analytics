@@ -973,6 +973,13 @@
       font-weight:750;
     }
 
+    .opd-table td.movement-child {
+      padding-left:40px;
+      color:#4b5563;
+      font-style:normal;
+      font-weight:750;
+    }
+
     .vendor-section-row td {
       background:var(--section)!important;
       color:#20262d!important;
@@ -2193,9 +2200,12 @@ function mergeComputedAndSupplemental(computed,supplemental,prior){
     ...(computed.vendedRepair.current||{})
   };
 
-  const currentOosIds=Array.isArray(vendedRepairCurrent.oosUnitIds)
+  const currentOosIds=Array.isArray(
+    vendedRepairCurrent.oosUnitIds
+  )
     ?vendedRepairCurrent.oosUnitIds
     :[];
+
   const priorOosIds=safePath(
     prior,
     "vendedRepair.oosUnitIds",
@@ -2207,17 +2217,29 @@ function mergeComputedAndSupplemental(computed,supplemental,prior){
     const priorSet=new Set(priorOosIds);
 
     vendedRepairCurrent.returnedToService=
-      [...priorSet].filter(unit=>!currentSet.has(unit)).length;
+      [...priorSet].filter(
+        unit=>!currentSet.has(unit)
+      ).length;
 
     vendedRepairCurrent.newUnitsOos=
-      [...currentSet].filter(unit=>!priorSet.has(unit)).length;
+      [...currentSet].filter(
+        unit=>!priorSet.has(unit)
+      ).length;
   }else{
     vendedRepairCurrent.returnedToService=null;
     vendedRepairCurrent.newUnitsOos=null;
   }
 
+  const movementPriorOosIds=Array.isArray(priorOosIds)
+    ?priorOosIds
+    :[];
+
   return {
     ...computed,
+    detailData:{
+      ...(computed.detailData||{}),
+      movementPriorOosIds
+    },
     vendedRepair:{
       ...computed.vendedRepair,
       current:vendedRepairCurrent
@@ -2475,7 +2497,7 @@ function renderVendedRepair(){
   let rows=mainRows.map(([label,key,type,mode])=>{
     if(mode==="movement"){
       return `<tr>
-        <td class="label">${label}</td>
+        <td class="sub-label movement-child">${label}</td>
         ${cell(null,type)}
         ${cell(current[key],type,true)}
         ${cell(null,type)}
@@ -3325,8 +3347,8 @@ function exportAllTables(){
     ["# of Vended Sites","vendedSites","number","standard"],
     ["# Units","units","number","standard"],
     ["# OOS Units","oos","number","standard"],
-    ["# of Vehicles Returned to Service","returnedToService","number","movement"],
-    ["# of New Units OOS","newUnitsOos","number","movement"],
+    ["   # of Vehicles Returned to Service","returnedToService","number","movement"],
+    ["   # of New Units OOS","newUnitsOos","number","movement"],
     ["Usefulness %","useful","percent","standard"]
   ].forEach(([label,key,type,mode])=>{
     const rowIndex=vrRows.length;
@@ -3585,11 +3607,7 @@ function exportAllTables(){
 
   const oosMovementRows=buildOosMovementRows(
     detailData,
-    safePath(
-      priorSnapshot,
-      "vendedRepair.oosUnitIds",
-      null
-    )
+    detailData.movementPriorOosIds||[]
   );
   XLSX.utils.book_append_sheet(
     wb,
