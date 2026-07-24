@@ -1162,14 +1162,14 @@
             <section class="opd-card ers">
               <div class="opd-table-wrap">
                 <table class="opd-table" id="ers-table">
-                  <thead><tr><th class="table-title-col">ERS Metrics</th><th class="value-col">Prior Day</th><th class="value-col">Current Day</th><th class="value-col">Delta</th></tr></thead>
+                  <thead><tr><th class="table-title-col">ERS Metrics</th><th class="value-col">Prior Week</th><th class="value-col">Current Week</th><th class="value-col">Delta</th></tr></thead>
                   <tbody id="ers-body"></tbody>
                 </table>
               </div>
             </section>
           </div>
 
-          <div class="opd-footer"><strong>Workbook-derived:</strong> A single open order may count separately under PM, DOT, A/C, and LTS. ANNUAL INSPECTION routes to DOT and GARDA AC CHECK routes to A/C whenever those phrases appear anywhere inside the combined VRO task text, regardless of the order’s REPCLASS. PM remains driven by a PM REPCLASS and counts approved PM task names or other remaining PM-repclass task content after the separate DOT, A/C, LTS, and coolant phrases are removed. Repeated task phrases on one order are deduplicated by unique Order + program. Achievable Compliance uses the current GARDA FLASH percentage plus unique currently overdue VINs with valid non-unassigned ECDs; each date-bucket row shows the compliance achievable from completing the eligible VINs in that bucket. Scheduling Gap uses unique VINs from the AC, PM, DOT, and LTS tabs that are overdue or coming due and do not yet have every required task on a non-unassigned VRO with a valid ECD. Duplicate VIN interval rows use OR logic: if mileage or time/frequency reaches the threshold, the VIN is controlled by that requirement.</div>
+          <div class="opd-footer"><strong>Workbook-derived:</strong> A single open order may count separately under PM, DOT, A/C, and LTS. ANNUAL INSPECTION routes to DOT and GARDA AC CHECK routes to A/C whenever those phrases appear anywhere inside the combined VRO task text, regardless of the order’s REPCLASS. PM remains driven by a PM REPCLASS and counts approved PM task names or other remaining PM-repclass task content after the separate DOT, A/C, LTS, and coolant phrases are removed. Repeated task phrases on one order are deduplicated by unique Order + program. Achievable Compliance uses the current GARDA FLASH percentage plus unique currently overdue VINs with valid non-unassigned ECDs; each date-bucket row shows the compliance achievable from completing the eligible VINs in that bucket. Scheduling Gap uses unique VINs from the AC, PM, DOT, and LTS tabs that are overdue or coming due and do not yet have every required task on a non-unassigned VRO with a valid ECD. Duplicate VIN interval rows use OR logic: if mileage or time/frequency reaches the threshold, the VIN is controlled by that requirement. OOS movement is calculated from the unique Unit # values marked OOS on the OOS GARDA tab for the approved 67 branches. Vehicles Returned to Service are units that were OOS in the prior Firebase snapshot but are not OOS today; New Units OOS are units that are OOS today but were not OOS in the prior snapshot.</div>
         </div>
       </div>
     </section>
@@ -1875,6 +1875,51 @@ function projectedCompliance(program,currentCompliance,source,maintenanceItems){
     itemAudit
   };
 }
+function parseOosGarda(aoa,warnings,sheetName){
+  const oosUnits=new Map();
+
+  for(let rowIndex=1;rowIndex<aoa.length;rowIndex++){
+    const row=aoa[rowIndex]||[];
+    const branchCode=extractBranchCode(row[2]);
+
+    if(!APPROVED_CODES.has(branchCode))continue;
+
+    const unit=upper(row[3]).replace(/\s+/g,"");
+    const status=upper(row[8]);
+
+    if(!unit||status!=="OOS")continue;
+
+    if(!oosUnits.has(unit)){
+      oosUnits.set(unit,{
+        unit,
+        branchCode,
+        branchName:BRANCH_BY_CODE.get(branchCode)?.name||clean(row[2]),
+        shopName:clean(row[2]),
+        unitType:clean(row[4]),
+        make:clean(row[5]),
+        model:clean(row[6]),
+        description:clean(row[7]),
+        openRos:numberOrNull(row[10]),
+        minRoDate:row[11],
+        maxEtc:row[12]
+      });
+    }
+  }
+
+  if(!oosUnits.size){
+    warnings.push(
+      `${sheetName}: no OOS units were matched to the approved 67 Garda branches.`
+    );
+  }
+
+  return {
+    oosUnitIds:[...oosUnits.keys()].sort(),
+    units:[...oosUnits.values()].sort((a,b)=>
+      a.branchName.localeCompare(b.branchName)||
+      a.unit.localeCompare(b.unit)
+    )
+  };
+}
 function usefulRowsByCode(aoa,warnings,sheetName){
   const map=new Map();for(let i=1;i<aoa.length;i++){const row=aoa[i]||[];const code=extractBranchCode(row[2]);if(!APPROVED_CODES.has(code))continue;const maxRoutes=toNumber(row[22]),totalUnits=toNumber(row[23]),oosUnits=toNumber(row[24]);const usefulCell=row[27];const useful=!isBlank(usefulCell)?Number(usefulCell):(maxRoutes?Math.max(0,totalUnits-oosUnits)/maxRoutes:null);map.set(code,{code,name:BRANCH_BY_CODE.get(code)?.name||clean(row[2]),maxRoutes,totalUnits,oosUnits,useful:Number.isFinite(useful)?useful:null});}
   const missing=[...APPROVED_CODES].filter(c=>!map.has(c));if(missing.length)warnings.push(`${sheetName}: ${missing.length} approved branch code(s) were not matched.`);return map;
@@ -2127,17 +2172,56 @@ function mergeComputedAndSupplemental(computed,supplemental,prior){
     ersCurrent[key]=firstMetric(computed.ers.current?.[key],supplementalErs[key]);
     ersPrior[key]=firstMetric(computed.ers.prior?.[key],snapshotErs?.[key]);
   });
+  const vendedRepairCurrent={
+    ...(computed.vendedRepair.current||{})
+  };
+
+  const currentOosIds=Array.isArray(vendedRepairCurrent.oosUnitIds)
+    ?vendedRepairCurrent.oosUnitIds
+    :[];
+  const priorOosIds=safePath(
+    prior,
+    "vendedRepair.oosUnitIds",
+    null
+  );
+
+  if(Array.isArray(priorOosIds)){
+    const currentSet=new Set(currentOosIds);
+    const priorSet=new Set(priorOosIds);
+
+    vendedRepairCurrent.returnedToService=
+      [...priorSet].filter(unit=>!currentSet.has(unit)).length;
+
+    vendedRepairCurrent.newUnitsOos=
+      [...currentSet].filter(unit=>!priorSet.has(unit)).length;
+  }else{
+    vendedRepairCurrent.returnedToService=null;
+    vendedRepairCurrent.newUnitsOos=null;
+  }
+
   return {
     ...computed,
+    vendedRepair:{
+      ...computed.vendedRepair,
+      current:vendedRepairCurrent
+    },
     maintenance,
-    ers:{current:ersCurrent,prior:ersPrior,reportedDelta:computed.ers.reportedDelta||{}},
-    vendor:{...computed.vendor,prior:computed.vendor.prior||safePath(prior,"vendor",{})}
+    ers:{
+      current:ersCurrent,
+      prior:ersPrior,
+      reportedDelta:computed.ers.reportedDelta||{}
+    },
+    vendor:{
+      ...computed.vendor,
+      prior:computed.vendor.prior||safePath(prior,"vendor",{})
+    }
   };
 }
 function parseWorkbook(buffer){
   const warnings=[];
   const workbook=XLSX.read(buffer,{type:"array",cellDates:true});
   const vro=sheetAoa(workbook,name=>name.includes("vro export"));
+  const oosGarda=sheetAoa(workbook,name=>name.trim()==="oos garda");
   const rep=sheetAoa(workbook,name=>name.includes("repclass")||name.includes("rep class"));
   const useful=sheetAoa(workbook,name=>name.includes("useful")&&!name.includes("dod")&&!name.includes("day over day"));
   const dod=sheetAoa(workbook,name=>name.includes("useful")&&(name.includes("dod")||name.includes("day over day")));
@@ -2148,6 +2232,7 @@ function parseWorkbook(buffer){
   const ltsSheet=sheetAoa(workbook,name=>name.trim()==="lts");
 
   if(!vro.aoa.length)throw new Error("VRO Export tab was not found.");
+  if(!oosGarda.aoa.length)warnings.push("OOS GARDA tab was not found; OOS movement counts will be blank.");
   if(!rep.aoa.length)throw new Error("REPCLASS tab was not found.");
   if(!useful.aoa.length)throw new Error("Useful % tab was not found.");
   if(!gardaFlash.aoa.length)throw new Error("GARDA FLASH tab was not found.");
@@ -2161,6 +2246,18 @@ function parseWorkbook(buffer){
     [0,"CUSTOMER"],[2,"VEHICLE"],[4,"TYPE"],[5,"TASK"],[7,"ORDER"],
     [11,"UNIT DUE DATE"],[12,"VENDOR"],[14,"STATUS"]
   ],vro.name,warnings);
+
+  if(oosGarda.aoa.length){
+    validateHeader(oosGarda.aoa,[
+      [2,"GARDA SHOPNAME"],
+      [3,"UNIT #"],
+      [8,"OOS"],
+      [10,"OPEN ROS"],
+      [11,"MIN RO DATE"],
+      [12,"MAX ETC"]
+    ],oosGarda.name,warnings);
+  }
+
   validateHeader(rep.aoa,[[0,"REPCLASS"],[1,"SERVICE"]],rep.name,warnings);
   validateHeader(useful.aoa,[
     [2,"BRANCH"],[22,"TOTAL - MAX ROUTES"],[23,"TOTAL - TOTAL UNITS"],
@@ -2189,8 +2286,21 @@ function parseWorkbook(buffer){
 
   const repclassMap=buildRepclassMap(rep.aoa);
   const vroResult=parseVroRows(vro.aoa,repclassMap,selectedReportDate(),warnings);
-  const usefulCurrent=summarizeUseful(usefulRowsByCode(useful.aoa,warnings,useful.name));
-  const usefulPrior=dod.aoa.length?summarizeUseful(usefulRowsByCode(dod.aoa,warnings,dod.name)):null;
+  const usefulCurrent=summarizeUseful(
+    usefulRowsByCode(useful.aoa,warnings,useful.name)
+  );
+  const usefulPrior=dod.aoa.length
+    ?summarizeUseful(
+        usefulRowsByCode(dod.aoa,warnings,dod.name)
+      )
+    :null;
+
+  const oosMovementSource=oosGarda.aoa.length
+    ?parseOosGarda(oosGarda.aoa,warnings,oosGarda.name)
+    :{oosUnitIds:[],units:[]};
+
+  usefulCurrent.oosUnitIds=oosMovementSource.oosUnitIds;
+
   const flash=parseGardaFlash(gardaFlash.aoa,warnings);
   const complianceSources={
     ac:acSheet.aoa.length?parseComplianceUnitSheet(acSheet.aoa,"ac",acSheet.name,warnings):null,
@@ -2242,7 +2352,8 @@ function parseWorkbook(buffer){
       reportDate:$("#report-date").value,
       vrOrders,
       maintenanceItems:vroResult.maintenanceItems,
-      complianceSources
+      complianceSources,
+      oosUnits:oosMovementSource.units
     },
     warnings
   };
@@ -2299,13 +2410,16 @@ async function loadFromFirebase(){try{setStatus("loading","Fetching Firebase wor
 function renderVendedRepair(){
   const current=dashboardData.vendedRepair.current;
   const prior=dashboardData.vendedRepair.prior||{};
+
   const mainRows=[
-    ["# of Vended Sites","vendedSites","number"],
-    ["# Branches","branches","number"],
-    ["# Units","units","number"],
-    ["# OOS Units","oos","number"],
-    ["Usefulness %","useful","percent"]
+    ["# of Vended Sites","vendedSites","number","standard"],
+    ["# Units","units","number","standard"],
+    ["# OOS Units","oos","number","standard"],
+    ["# of Vehicles Returned to Service","returnedToService","number","movement"],
+    ["# of New Units OOS","newUnitsOos","number","movement"],
+    ["Usefulness %","useful","percent","standard"]
   ];
+
   const underRows=[
     ["# Branches","underBranches","number"],
     ["# Units","underUnits","number"],
@@ -2313,14 +2427,23 @@ function renderVendedRepair(){
     ["Usefulness %","underUseful","percent"]
   ];
 
-  let rows=mainRows.map(([label,key,type])=>`
-    <tr>
+  let rows=mainRows.map(([label,key,type,mode])=>{
+    if(mode==="movement"){
+      return `<tr>
+        <td class="label">${label}</td>
+        ${cell(null,type)}
+        ${cell(current[key],type,true)}
+        ${cell(null,type)}
+      </tr>`;
+    }
+
+    return `<tr>
       <td class="label">${label}</td>
       ${cell(prior[key],type)}
       ${cell(current[key],type,true)}
       ${deltaCell(prior[key],current[key],type)}
-    </tr>`
-  ).join("");
+    </tr>`;
+  }).join("");
 
   rows+=`<tr class="vendor-section-row">
     <td colspan="4">Sites &lt;100% Usefulness</td>
@@ -3009,6 +3132,78 @@ function buildPmNotScheduledRows(detailData){
 
   return [headers,...rows];
 }
+function buildOosMovementRows(detailData,priorOosIds){
+  const headers=[
+    "Movement",
+    "Unit #",
+    "Branch Code",
+    "Branch",
+    "Shop Name",
+    "Unit Type",
+    "Make",
+    "Model",
+    "Description",
+    "Open ROs",
+    "Minimum RO Date",
+    "Maximum ETC"
+  ];
+
+  if(!Array.isArray(priorOosIds)){
+    return [headers];
+  }
+
+  const currentUnits=detailData?.oosUnits||[];
+  const currentMap=new Map(
+    currentUnits.map(unit=>[unit.unit,unit])
+  );
+  const currentSet=new Set(currentMap.keys());
+  const priorSet=new Set(priorOosIds);
+  const rows=[];
+
+  [...priorSet]
+    .filter(unit=>!currentSet.has(unit))
+    .sort()
+    .forEach(unit=>{
+      rows.push([
+        "Returned to Service",
+        unit,
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        null,
+        null,
+        null
+      ]);
+    });
+
+  [...currentSet]
+    .filter(unit=>!priorSet.has(unit))
+    .sort()
+    .forEach(unit=>{
+      const detail=currentMap.get(unit)||{};
+
+      rows.push([
+        "New Unit OOS",
+        unit,
+        detail.branchCode||"",
+        detail.branchName||"",
+        detail.shopName||"",
+        detail.unitType||"",
+        detail.make||"",
+        detail.model||"",
+        detail.description||"",
+        detail.openRos??null,
+        exportDate(detail.minRoDate),
+        exportDate(detail.maxEtc)
+      ]);
+    });
+
+  return [headers,...rows];
+}
 function buildVrNotScheduledRows(detailData){
   const headers=[
     "VIN",
@@ -3081,14 +3276,36 @@ function exportAllTables(){
   const vr=dashboardData.vendedRepair;
   const vrRows=[["Vended Repair","Prior Day","Current Day","Delta"]];
   const vrTypes=[];
-  [["# of Vended Sites","vendedSites","number"],["# Branches","branches","number"],["# Units","units","number"],["# OOS Units","oos","number"],["Usefulness %","useful","percent"]].forEach(([label,key,type])=>{
+  [
+    ["# of Vended Sites","vendedSites","number","standard"],
+    ["# Units","units","number","standard"],
+    ["# OOS Units","oos","number","standard"],
+    ["# of Vehicles Returned to Service","returnedToService","number","movement"],
+    ["# of New Units OOS","newUnitsOos","number","movement"],
+    ["Usefulness %","useful","percent","standard"]
+  ].forEach(([label,key,type,mode])=>{
     const rowIndex=vrRows.length;
-    vrRows.push([
-      label,
-      excelValue(vr.prior?.[key],type),
-      excelValue(vr.current[key],type),
-      excelDelta(vr.prior?.[key],vr.current[key],type)
-    ]);
+
+    vrRows.push(
+      mode==="movement"
+        ?[
+            label,
+            null,
+            excelValue(vr.current[key],type),
+            null
+          ]
+        :[
+            label,
+            excelValue(vr.prior?.[key],type),
+            excelValue(vr.current[key],type),
+            excelDelta(
+              vr.prior?.[key],
+              vr.current[key],
+              type
+            )
+          ]
+    );
+
     vrTypes.push([rowIndex,type]);
   });
   const usefulGroupRow=vrRows.length;
@@ -3189,7 +3406,7 @@ function exportAllTables(){
   // ERS Metrics
   const ersCurrent=dashboardData.ers.current;
   const ersPrior=dashboardData.ers.prior||{};
-  const ersRows=[["ERS Metrics","Prior Day","Current Day","Delta"]];
+  const ersRows=[["ERS Metrics","Prior Week","Current Week","Delta"]];
   const ersTypes=[];
   [["Total Contacts Handled (Week)","contacts","number"],["Within 60 Seconds (Week)","within60","percent"],["Ticket Volume (ERS Events)","ticketVolume","number"],["SOS Time","sos","time"],["Downtime","downtime","time"],["% of ERS Tickets w/ 3+ hour Downtime","threePlus","percent"],["% of ERS Tickets w/ 3+ hour Downtime (Controllable)","controllable","percent"]].forEach(([label,key,type])=>{
     const rowIndex=ersRows.length;
@@ -3319,6 +3536,24 @@ function exportAllTables(){
       [20,24,16,26,22,26,24,26,34,30,22,62]
     ),
     "VR Not Scheduled"
+  );
+
+  const oosMovementRows=buildOosMovementRows(
+    detailData,
+    safePath(
+      priorSnapshot,
+      "vendedRepair.oosUnitIds",
+      null
+    )
+  );
+  XLSX.utils.book_append_sheet(
+    wb,
+    makeDetailSheet(
+      oosMovementRows,
+      [22,20,14,28,30,14,18,18,36,12,16,16],
+      [10,11]
+    ),
+    "OOS Movement"
   );
 
   XLSX.writeFile(
