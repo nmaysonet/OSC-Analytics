@@ -1899,7 +1899,10 @@ function parseOosGarda(aoa,warnings,sheetName){
         make:clean(row[5]),
         model:clean(row[6]),
         description:clean(row[7]),
-        openRos:numberOrNull(row[10]),
+        openRos:(()=>{
+          const value=Number(row[10]);
+          return Number.isFinite(value)?value:null;
+        })(),
         minRoDate:row[11],
         maxEtc:row[12]
       });
@@ -2405,7 +2408,35 @@ async function processBuffer(buffer,sourceLabel){
   $("#updated-pill").textContent=`Updated ${new Date().toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})}`;
   $("#updated-pill").className="pill good";
 }
-async function loadFromFirebase(){try{setStatus("loading","Fetching Firebase workbook",`Downloading ${WORKBOOK_PATH} from Firebase Storage…`);const buffer=await fetchWorkbookBuffer();await processBuffer(buffer,"Firebase Storage");}catch(err){console.error(err);setStatus("error","Live workbook could not load",err.message);showWarning(["Confirm Firebase Storage access and the workbook filename, then allow the automatic refresh to retry."]);}}
+async function loadFromFirebase(){
+  try{
+    setStatus(
+      "loading",
+      "Fetching Firebase workbook",
+      `Downloading ${WORKBOOK_PATH} from Firebase Storage…`
+    );
+
+    const buffer=await fetchWorkbookBuffer();
+    await processBuffer(buffer,"Firebase Storage");
+  }catch(err){
+    console.error(
+      `Failed to load or process ${WORKBOOK_PATH}:`,
+      err
+    );
+
+    const errorMessage=err?.message||String(err);
+
+    setStatus(
+      "error",
+      "Live workbook could not load",
+      errorMessage
+    );
+
+    showWarning([
+      `Unable to load or process ${WORKBOOK_PATH}. Firebase returned: ${errorMessage}. The page will retry automatically.`
+    ]);
+  }
+}
 
 function renderVendedRepair(){
   const current=dashboardData.vendedRepair.current;
