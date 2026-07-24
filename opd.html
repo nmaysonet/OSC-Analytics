@@ -1017,11 +1017,39 @@
     .opd-table .table-title-col { width:49%; }
     .opd-card.vr-ecd .table-title-col { width:72%; }
     .opd-card.maintenance .table-title-col { width:32%; }
-    .opd-card.vendor .table-title-col { width:50%; }
-    .opd-card.ers .table-title-col { width:50%; }
+    .opd-card.vendor .table-title-col,
+    .opd-card.ers .table-title-col { width:70%; }
+
     .opd-table .value-col { width:17%; }
+
+    .opd-card.vendor .value-col,
+    .opd-card.ers .value-col { width:30%; }
+
     .opd-card.maintenance .value-col { width:12.6%; }
     .opd-card.maintenance .wide-col { width:18.8%; }
+
+    .opd-table td.maintenance-filler {
+      background:
+        repeating-linear-gradient(
+          135deg,
+          #f3f5f7 0,
+          #f3f5f7 4px,
+          #c7cdd3 4px,
+          #c7cdd3 6px
+        )!important;
+      color:transparent!important;
+    }
+
+    .opd-table tr:hover td.maintenance-filler {
+      background:
+        repeating-linear-gradient(
+          135deg,
+          #f3f5f7 0,
+          #f3f5f7 4px,
+          #c7cdd3 4px,
+          #c7cdd3 6px
+        )!important;
+    }
 
     .opd-footer {
       margin-top:16px;
@@ -1160,7 +1188,7 @@
             <section class="opd-card vendor">
               <div class="opd-table-wrap">
                 <table class="opd-table" id="vendor-table">
-                  <thead><tr><th class="table-title-col">Vendor Coverage</th><th class="value-col">Past State</th><th class="value-col">Present State</th><th class="value-col">Delta</th></tr></thead>
+                  <thead><tr><th class="table-title-col">Vendor Coverage</th><th class="value-col">Prior Week</th></tr></thead>
                   <tbody id="vendor-body"></tbody>
                 </table>
               </div>
@@ -1169,7 +1197,7 @@
             <section class="opd-card ers">
               <div class="opd-table-wrap">
                 <table class="opd-table" id="ers-table">
-                  <thead><tr><th class="table-title-col">ERS Metrics</th><th class="value-col">Prior Week</th><th class="value-col">Current Week</th><th class="value-col">Delta</th></tr></thead>
+                  <thead><tr><th class="table-title-col">ERS Reporting</th><th class="value-col">Prior Week</th></tr></thead>
                   <tbody id="ers-body"></tbody>
                 </table>
               </div>
@@ -2000,37 +2028,44 @@ function flashErsKey(label){
 function parseGardaFlash(aoa,warnings){
   const maintenance={};
   PROGRAMS.forEach(program=>{
-    maintenance[program.key]={compliance:null,priorCompliance:null,reportedDelta:null};
+    maintenance[program.key]={
+      compliance:null,
+      priorCompliance:null,
+      reportedDelta:null
+    };
   });
 
   const blankErs=()=>({
-    contacts:null,within60:null,ticketVolume:null,sos:null,
-    downtime:null,threePlus:null,controllable:null
+    contacts:null,
+    within60:null,
+    ticketVolume:null,
+    sos:null,
+    downtime:null,
+    threePlus:null,
+    controllable:null
   });
-  const ersCurrent=blankErs();
-  const ersPrior=blankErs();
-  const ersDelta=blankErs();
 
-  const vendorCurrent={
-    total:null,ers:null,repair:null,pm:null,belowCoverage:null
+  const ersWeek=blankErs();
+
+  const vendorWeek={
+    total:null,
+    ers:null,
+    repair:null,
+    pm:null,
+    belowCoverage:null
   };
-  const vendorPrior={
-    total:null,ers:null,repair:null,pm:null,belowCoverage:null
-  };
-  const vendorDelta={
-    total:null,ers:null,repair:null,pm:null,belowCoverage:null
-  };
+
   const vendorTop=[];
   let readingTopBranches=false;
 
   const numberOrNull=value=>{
     if(isBlank(value))return null;
-    const n=Number(value);
-    return Number.isFinite(n)?n:null;
+    const number=Number(value);
+    return Number.isFinite(number)?number:null;
   };
 
-  for(let i=1;i<aoa.length;i++){
-    const row=aoa[i]||[];
+  for(let rowIndex=1;rowIndex<aoa.length;rowIndex++){
+    const row=aoa[rowIndex]||[];
 
     const programKey=flashProgramKey(row[0]);
     if(programKey){
@@ -2041,33 +2076,32 @@ function parseGardaFlash(aoa,warnings){
       };
     }
 
+    /*
+      GARDA FLASH now contains one weekly ERS value column:
+      F = ERS Reporting label
+      G = Prior Week value
+    */
     const [ersKey,ersType]=flashErsKey(row[5]);
     if(ersKey){
       const convert=value=>{
-        if(ersType==="percent")return normalizeFlashPercent(value);
-        if(ersType==="hours")return normalizeFlashHoursToMinutes(value);
+        if(ersType==="percent"){
+          return normalizeFlashPercent(value);
+        }
+        if(ersType==="hours"){
+          return normalizeFlashHoursToMinutes(value);
+        }
         return numberOrNull(value);
       };
-      ersCurrent[ersKey]=convert(row[6]);
-      ersPrior[ersKey]=convert(row[7]);
 
-      /*
-        ERS percentage deltas are calculated directly from the normalized
-        Current Week and Prior Week values. The GARDA FLASH Delta cell may
-        be stored in percentage points rather than as a decimal percentage,
-        which can otherwise overstate the displayed basis-point movement.
-      */
-      ersDelta[ersKey]=ersType==="percent"
-        ?(
-            isBlank(ersCurrent[ersKey])||
-            isBlank(ersPrior[ersKey])
-              ?null
-              :Number(ersCurrent[ersKey])-Number(ersPrior[ersKey])
-          )
-        :convert(row[8]);
+      ersWeek[ersKey]=convert(row[6]);
     }
 
-    const vendorLabel=String(row[10]??"").trim();
+    /*
+      GARDA FLASH now contains one weekly Vendor Coverage value column:
+      I = Vendor Coverage label
+      J = Prior Week value
+    */
+    const vendorLabel=String(row[8]??"").trim();
     const vendorKey=flashVendorKey(vendorLabel);
 
     if(vendorKey==="topHeader"){
@@ -2077,18 +2111,14 @@ function parseGardaFlash(aoa,warnings){
 
     if(vendorKey){
       readingTopBranches=false;
-      vendorCurrent[vendorKey]=numberOrNull(row[12]);
-      vendorPrior[vendorKey]=numberOrNull(row[11]);
-      vendorDelta[vendorKey]=numberOrNull(row[13]);
+      vendorWeek[vendorKey]=numberOrNull(row[9]);
       continue;
     }
 
     if(readingTopBranches&&vendorLabel){
       vendorTop.push({
         name:vendorLabel,
-        prior:numberOrNull(row[11]),
-        current:numberOrNull(row[12]),
-        reportedDelta:numberOrNull(row[13])
+        current:numberOrNull(row[9])
       });
     }
   }
@@ -2096,35 +2126,41 @@ function parseGardaFlash(aoa,warnings){
   const expectedPrograms=["pm","dot","lts","ac"];
   const missingPrograms=expectedPrograms
     .filter(key=>isBlank(maintenance[key].compliance))
-    .map(key=>PROGRAMS.find(program=>program.key===key)?.label||key);
+    .map(
+      key=>
+        PROGRAMS.find(program=>program.key===key)?.label||
+        key
+    );
+
   if(missingPrograms.length){
-    warnings.push(`GARDA FLASH: missing current compliance for ${missingPrograms.join(", ")}.`);
+    warnings.push(
+      `GARDA FLASH: missing current compliance for ${missingPrograms.join(", ")}.`
+    );
   }
 
-  const missingErs=Object.entries(ersCurrent)
-    .filter(([,value])=>isBlank(value))
-    .map(([key])=>key);
-  if(missingErs.length){
-    warnings.push(`GARDA FLASH: missing ERS current value(s): ${missingErs.join(", ")}.`);
+  if(Object.values(ersWeek).every(isBlank)){
+    warnings.push(
+      "GARDA FLASH: no ERS Reporting prior-week values were found."
+    );
   }
 
-  const missingVendor=Object.entries(vendorCurrent)
-    .filter(([,value])=>isBlank(value))
-    .map(([key])=>key);
-  if(missingVendor.length){
-    warnings.push(`GARDA FLASH: missing Vendor Coverage current value(s): ${missingVendor.join(", ")}.`);
-  }
-  if(vendorTop.length<10){
-    warnings.push(`GARDA FLASH: only ${vendorTop.length} branch row(s) were found beneath Top 10 Branches Needing Vendor Coverage.`);
+  if(Object.values(vendorWeek).every(isBlank)){
+    warnings.push(
+      "GARDA FLASH: no Vendor Coverage prior-week values were found."
+    );
   }
 
   return {
     maintenance,
-    ers:{current:ersCurrent,prior:ersPrior,reportedDelta:ersDelta},
+    ers:{
+      current:ersWeek,
+      prior:{},
+      reportedDelta:{}
+    },
     vendor:{
-      ...vendorCurrent,
-      prior:vendorPrior,
-      reportedDelta:vendorDelta,
+      ...vendorWeek,
+      prior:{},
+      reportedDelta:{},
       top:vendorTop.slice(0,10)
     }
   };
@@ -2303,9 +2339,14 @@ function parseWorkbook(buffer){
     [24,"TOTAL - OOS UNITS"],[27,"TOTAL - USEFUL %"]
   ],useful.name,warnings);
   validateHeader(gardaFlash.aoa,[
-    [0,"SERVICE"],[1,"CURRENT COMPLIANCE"],[2,"DAY PRIOR"],[3,"DELTA"],
-    [5,"ERS REPORTING"],[6,"CURRENT"],[7,"PREVIOUS"],[8,"DELTA"],
-    [10,"VENDOR COVERAGE"],[11,"PAST STATE"],[12,"PRESENT STATE"],[13,"DELTA"]
+    [0,"SERVICE"],
+    [1,"CURRENT COMPLIANCE"],
+    [2,"DAY PRIOR"],
+    [3,"DELTA"],
+    [5,"ERS REPORTING"],
+    [6,"PRIOR WEEK"],
+    [8,"VENDOR COVERAGE"],
+    [9,"PRIOR WEEK"]
   ],gardaFlash.name,warnings);
   if(acSheet.aoa.length)validateHeader(acSheet.aoa,[
     [6,"VIN"],[7,"COMPCODE_DESC"],[8,"INTERVAL"],[9,"METERTYPE"],
@@ -2590,7 +2631,7 @@ function bucketAchievableCell(metric,rowKey){
     !metric?.projection||
     rowKey==="missing"
   ){
-    return `<td></td>`;
+    return `<td class="maintenance-filler" title="Not applicable"></td>`;
   }
 
   const count=metric.projection.recoveryBuckets?.[rowKey]||0;
@@ -2600,7 +2641,11 @@ function bucketAchievableCell(metric,rowKey){
     `${count} unique currently overdue VIN${count===1?"":"s"} can become compliant by completing the scheduled work in this ECD bucket. `+
     `Calculation: ${pct(metric.compliance)} current compliance + ${count}/${metric.projection.totalUnits}.`;
 
-  return `<td class="num ${isBlank(value)?"empty":""}" title="${escapeHtml(title)}">
+  if(isBlank(value)){
+    return `<td class="maintenance-filler" title="Not applicable"></td>`;
+  }
+
+  return `<td class="num" title="${escapeHtml(title)}">
     <strong>${formatValue(value,"percent")}</strong>
     <span class="cell-note">${count.toLocaleString()} eligible VIN${count===1?"":"s"}</span>
   </td>`;
@@ -2644,7 +2689,7 @@ function renderMaintenance(){
         ${maintenanceEcdCell(current,metric,row.key)}
         ${deltaCell(prior,current)}
         ${bucketAchievableCell(metric,row.key)}
-        <td></td>
+        <td class="maintenance-filler" title="Program-level metric"></td>
       </tr>`;
     }).join("");
 
@@ -2653,8 +2698,7 @@ function renderMaintenance(){
 }
 function renderVendor(){
   const vendor=dashboardData.vendor||{};
-  const prior=vendor.prior||{};
-  const reported=vendor.reportedDelta||{};
+
   const metrics=[
     ["Total # Vendors","total"],
     ["Unique ERS Vendors","ers"],
@@ -2666,31 +2710,28 @@ function renderVendor(){
   let rows=metrics.map(([label,key])=>`
     <tr>
       <td class="label">${label}</td>
-      ${cell(prior[key])}
       ${cell(vendor[key],"number",true)}
-      ${sourceDeltaCell(reported[key],prior[key],vendor[key],"number")}
-    </tr>`
-  ).join("");
+    </tr>
+  `).join("");
 
-  rows+=`<tr class="vendor-section-row">
-    <td colspan="4">Top 10 Branches Needing Vendor Coverage</td>
-  </tr>`;
+  if((vendor.top||[]).length){
+    rows+=`<tr class="vendor-section-row">
+      <td colspan="2">Top 10 Branches Needing Vendor Coverage</td>
+    </tr>`;
 
-  rows+=(vendor.top||[]).map(branch=>`
-    <tr>
-      <td class="sub-label">${escapeHtml(branch.name)}</td>
-      ${cell(branch.prior)}
-      ${cell(branch.current,"number",true)}
-      ${sourceDeltaCell(branch.reportedDelta,branch.prior,branch.current,"number")}
-    </tr>`
-  ).join("");
+    rows+=(vendor.top||[]).map(branch=>`
+      <tr>
+        <td class="sub-label">${escapeHtml(branch.name)}</td>
+        ${cell(branch.current,"number",true)}
+      </tr>
+    `).join("");
+  }
 
   $("#vendor-body").innerHTML=rows;
 }
 function renderErs(){
-  const current=dashboardData.ers.current||{};
-  const prior=dashboardData.ers.prior||{};
-  const reported=dashboardData.ers.reportedDelta||{};
+  const week=dashboardData.ers.current||{};
+
   const rows=[
     ["Total Contacts Handled (Week)","contacts","number"],
     ["Within 60 Seconds (Week)","within60","percent"],
@@ -2702,14 +2743,13 @@ function renderErs(){
   ];
 
   $("#ers-body").innerHTML=rows.map(([label,key,type])=>{
-    const missing=isBlank(current[key])
+    const missing=isBlank(week[key])
       ?'<span class="cell-note">Value not present on GARDA FLASH</span>'
       :'';
+
     return `<tr>
       <td class="label">${label}${missing}</td>
-      ${cell(prior[key],type)}
-      ${cell(current[key],type,true)}
-      ${sourceDeltaCell(reported[key],prior[key],current[key],type)}
+      ${cell(week[key],type,true)}
     </tr>`;
   }).join("");
 }
@@ -2761,109 +2801,262 @@ function makeSheet(rows,widths,typesByRow=[]){const ws=XLSX.utils.aoa_to_sheet(r
       }
     }
   });
-  return ws;}
+  return ws;
+}
+function applyLinedFiller(ws,cells){
+  (cells||[]).forEach(([row,column])=>{
+    const ref=XLSX.utils.encode_cell({r:row,c:column});
+
+    if(!ws[ref]){
+      ws[ref]={t:"s",v:""};
+    }
+
+    ws[ref].s={
+      ...(ws[ref].s||{}),
+      fill:{
+        patternType:"darkDown",
+        fgColor:{rgb:"C7CDD3"},
+        bgColor:{rgb:"F3F5F7"}
+      }
+    };
+  });
+
+  return ws;
+}
 function makeConsolidatedSheet(sections){
-  const maxCols=6;
   const rows=[];
+  const rowWidths=[];
   const headerRows=new Set();
   const blankRows=new Set();
   const mergedSectionRows=[];
   const typeRows=[];
+  const linedFillerCells=[];
 
   sections.forEach((section,sectionIndex)=>{
     const start=rows.length;
+    const sectionWidth=section.width||Math.max(
+      1,
+      ...section.rows.map(row=>row.length)
+    );
+
     section.rows.forEach((sourceRow,index)=>{
       const row=[...sourceRow];
-      while(row.length<maxCols)row.push(null);
+
+      while(row.length<sectionWidth){
+        row.push(null);
+      }
+
       rows.push(row);
-      if(index===0)headerRows.add(start+index);
+      rowWidths.push(sectionWidth);
+
+      if(index===0){
+        headerRows.add(start+index);
+      }
     });
 
-    (section.types||[]).forEach(([rowIndex,type,startCol=1,endCol=section.rows[0].length-1])=>{
-      typeRows.push([start+rowIndex,type,startCol,endCol]);
-    });
+    (section.types||[]).forEach(
+      ([
+        rowIndex,
+        type,
+        startColumn=1,
+        endColumn=sectionWidth-1
+      ])=>{
+        typeRows.push([
+          start+rowIndex,
+          type,
+          startColumn,
+          Math.min(endColumn,sectionWidth-1)
+        ]);
+      }
+    );
 
     (section.mergedRows||[]).forEach(rowIndex=>{
       mergedSectionRows.push({
         row:start+rowIndex,
-        endCol:Math.max(0,section.rows[0].length-1)
+        endColumn:sectionWidth-1
       });
     });
 
+    (section.fillerCells||[]).forEach(
+      ([rowIndex,column])=>{
+        if(column<sectionWidth){
+          linedFillerCells.push([
+            start+rowIndex,
+            column
+          ]);
+        }
+      }
+    );
+
     if(sectionIndex<sections.length-1){
       blankRows.add(rows.length);
-      rows.push([null,null,null,null,null,null]);
+      rows.push([]);
+      rowWidths.push(0);
     }
   });
 
   const ws=XLSX.utils.aoa_to_sheet(rows);
-  ws["!cols"]=[{wch:48},{wch:16},{wch:16},{wch:24},{wch:23},{wch:18}];
+
+  ws["!cols"]=[
+    {wch:48},
+    {wch:16},
+    {wch:16},
+    {wch:24},
+    {wch:23},
+    {wch:18}
+  ];
   ws["!merges"]=ws["!merges"]||[];
 
-  const range=XLSX.utils.decode_range(ws["!ref"]);
-  for(let r=0;r<=range.e.r;r++){
-    for(let c=0;c<=range.e.c;c++){
-      const ref=XLSX.utils.encode_cell({r,c});
-      if(!ws[ref])ws[ref]={t:"s",v:""};
-      const value=String(rows[r]?.[0]??"");
-      const isHeader=headerRows.has(r);
-      const isBlankRow=blankRows.has(r);
-      const isIndented=c===0&&/^\s/.test(value);
+  const range=XLSX.utils.decode_range(
+    ws["!ref"]||"A1:A1"
+  );
+
+  for(let row=0;row<=range.e.r;row++){
+    const activeWidth=rowWidths[row]||0;
+
+    for(let column=0;column<activeWidth;column++){
+      const ref=XLSX.utils.encode_cell({
+        r:row,
+        c:column
+      });
+
+      if(!ws[ref]){
+        ws[ref]={t:"s",v:""};
+      }
+
+      const value=String(rows[row]?.[0]??"");
+      const isHeader=headerRows.has(row);
+      const isBlankRow=blankRows.has(row);
+      const isIndented=
+        column===0&&
+        /^\s/.test(value);
 
       ws[ref].s={
         font:{
           name:"Raleway",
           sz:10,
-          color:{rgb:isHeader?"111111":c===0?"0070C0":"222222"},
-          bold:isHeader||c===0,
+          color:{
+            rgb:isHeader
+              ?"111111"
+              :column===0
+                ?"0070C0"
+                :"222222"
+          },
+          bold:isHeader||column===0,
           italic:!isHeader&&isIndented
         },
-        fill:isHeader?{fgColor:{rgb:"D9D9D9"}}:undefined,
+        fill:isHeader
+          ?{fgColor:{rgb:"D9D9D9"}}
+          :undefined,
         alignment:{
-          horizontal:isHeader||c===0?"left":"right",
+          horizontal:
+            isHeader||column===0
+              ?"left"
+              :"right",
           vertical:"center",
           indent:isIndented?1:0
         },
-        border:isBlankRow?undefined:{
-          top:{style:"thin",color:{rgb:"B7B7B7"}},
-          bottom:{style:"thin",color:{rgb:"B7B7B7"}},
-          left:{style:"thin",color:{rgb:"B7B7B7"}},
-          right:{style:"thin",color:{rgb:"B7B7B7"}}
-        }
+        border:isBlankRow
+          ?undefined
+          :{
+              top:{
+                style:"thin",
+                color:{rgb:"B7B7B7"}
+              },
+              bottom:{
+                style:"thin",
+                color:{rgb:"B7B7B7"}
+              },
+              left:{
+                style:"thin",
+                color:{rgb:"B7B7B7"}
+              },
+              right:{
+                style:"thin",
+                color:{rgb:"B7B7B7"}
+              }
+            }
       };
     }
   }
 
-  mergedSectionRows.forEach(({row,endCol})=>{
-    ws["!merges"].push({s:{r:row,c:0},e:{r:row,c:endCol}});
-    const ref=XLSX.utils.encode_cell({r:row,c:0});
+  mergedSectionRows.forEach(({row,endColumn})=>{
+    ws["!merges"].push({
+      s:{r:row,c:0},
+      e:{r:row,c:endColumn}
+    });
+
+    const ref=XLSX.utils.encode_cell({
+      r:row,
+      c:0
+    });
+
     ws[ref].s={
       ...(ws[ref].s||{}),
-      font:{name:"Raleway",sz:10,color:{rgb:"334155"},bold:true},
+      font:{
+        name:"Raleway",
+        sz:10,
+        color:{rgb:"334155"},
+        bold:true
+      },
       fill:{fgColor:{rgb:"ECEFF2"}},
-      alignment:{horizontal:"left",vertical:"center"},
+      alignment:{
+        horizontal:"left",
+        vertical:"center"
+      },
       border:{
-        top:{style:"thin",color:{rgb:"B7B7B7"}},
-        bottom:{style:"thin",color:{rgb:"B7B7B7"}},
-        left:{style:"thin",color:{rgb:"B7B7B7"}},
-        right:{style:"thin",color:{rgb:"B7B7B7"}}
+        top:{
+          style:"thin",
+          color:{rgb:"B7B7B7"}
+        },
+        bottom:{
+          style:"thin",
+          color:{rgb:"B7B7B7"}
+        },
+        left:{
+          style:"thin",
+          color:{rgb:"B7B7B7"}
+        },
+        right:{
+          style:"thin",
+          color:{rgb:"B7B7B7"}
+        }
       }
     };
   });
 
-  typeRows.forEach(([rowIndex,type,startCol,endCol])=>{
-    for(let c=startCol;c<=endCol;c++){
-      const ref=XLSX.utils.encode_cell({r:rowIndex,c});
-      if(!ws[ref])continue;
-      if(type==="percent"){
-        ws[ref].z=c===3?'0 "bps"':"0.0%";
-      }else if(type==="time"){
-        ws[ref].z="[h]:mm";
-      }else{
-        ws[ref].z="#,##0";
+  typeRows.forEach(
+    ([rowIndex,type,startColumn,endColumn])=>{
+      for(
+        let column=startColumn;
+        column<=endColumn;
+        column++
+      ){
+        const ref=XLSX.utils.encode_cell({
+          r:rowIndex,
+          c:column
+        });
+
+        if(!ws[ref])continue;
+
+        if(type==="percent"){
+          ws[ref].z=
+            column===3
+              ?'0 "bps"'
+              :"0.0%";
+        }else if(type==="time"){
+          ws[ref].z="[h]:mm";
+        }else{
+          ws[ref].z="#,##0";
+        }
       }
     }
-  });
+  );
+
+  applyLinedFiller(
+    ws,
+    linedFillerCells
+  );
 
   return ws;
 }
@@ -3396,6 +3589,7 @@ function exportAllTables(){
   // Vended Maintenance
   const maintRows=[["Vended Maintenance","Prior Day","Current Day","Delta","Achievable Compliance","Scheduling Gap"]];
   const maintTypes=[];
+  const maintFillerCells=[];
   PROGRAMS.forEach(program=>{
     const metric=dashboardData.maintenance[program.key];
     let rowIndex=maintRows.length;
@@ -3431,89 +3625,116 @@ function exportAllTables(){
         null
       ]);
       maintTypes.push([rowIndex,"number",1,3]);
+
       if(ecd.key!=="missing"){
         maintTypes.push([rowIndex,"percent",4,4]);
+      }else{
+        maintFillerCells.push([rowIndex,4]);
       }
+
+      // Scheduling Gap is a program-level metric only.
+      maintFillerCells.push([rowIndex,5]);
     });
   });
 
   // Vendor Coverage
   const vendor=dashboardData.vendor||{};
-  const vendorPrior=vendor.prior||{};
-  const vendorRows=[["Vendor Coverage","Past State","Present State","Delta"]];
-  [["Total # Vendors","total"],["Unique ERS Vendors","ers"],["Unique Vended Repair Vendors","repair"],["Unique PM Vendors","pm"],["# Branch Locations Below Vendor Coverage","belowCoverage"]].forEach(([label,key])=>{
+  const vendorRows=[
+    ["Vendor Coverage","Prior Week"]
+  ];
+
+  [
+    ["Total # Vendors","total"],
+    ["Unique ERS Vendors","ers"],
+    ["Unique Vended Repair Vendors","repair"],
+    ["Unique PM Vendors","pm"],
+    ["# Branch Locations Below Vendor Coverage","belowCoverage"]
+  ].forEach(([label,key])=>{
     vendorRows.push([
       label,
-      excelValue(vendorPrior[key]),
-      excelValue(vendor[key]),
-      excelValue(firstMetric(
-        vendor.reportedDelta?.[key],
-        isBlank(vendorPrior[key])||isBlank(vendor[key])
-          ?null
-          :Number(vendor[key])-Number(vendorPrior[key])
-      ))
-    ]);
-  });
-  const vendorGroupRow=vendorRows.length;
-  vendorRows.push(["Top 10 Branches Needing Vendor Coverage",null,null,null]);
-  (vendor.top||[]).forEach(branch=>{
-    vendorRows.push([
-      `   ${branch.name}`,
-      excelValue(branch.prior),
-      excelValue(branch.current),
-      excelValue(firstMetric(
-        branch.reportedDelta,
-        isBlank(branch.prior)||isBlank(branch.current)
-          ?null
-          :Number(branch.current)-Number(branch.prior)
-      ))
+      excelValue(vendor[key])
     ]);
   });
 
-  // ERS Metrics
-  const ersCurrent=dashboardData.ers.current;
-  const ersPrior=dashboardData.ers.prior||{};
-  const ersRows=[["ERS Metrics","Prior Week","Current Week","Delta"]];
+  let vendorGroupRow=null;
+
+  if((vendor.top||[]).length){
+    vendorGroupRow=vendorRows.length;
+
+    vendorRows.push([
+      "Top 10 Branches Needing Vendor Coverage",
+      null
+    ]);
+
+    (vendor.top||[]).forEach(branch=>{
+      vendorRows.push([
+        `   ${branch.name}`,
+        excelValue(branch.current)
+      ]);
+    });
+  }
+
+  // ERS Reporting
+  const ersWeek=dashboardData.ers.current||{};
+  const ersRows=[
+    ["ERS Reporting","Prior Week"]
+  ];
   const ersTypes=[];
-  [["Total Contacts Handled (Week)","contacts","number"],["Within 60 Seconds (Week)","within60","percent"],["Ticket Volume (ERS Events)","ticketVolume","number"],["SOS Time","sos","time"],["Downtime","downtime","time"],["% of ERS Tickets w/ 3+ hour Downtime","threePlus","percent"],["% of ERS Tickets w/ 3+ hour Downtime (Controllable)","controllable","percent"]].forEach(([label,key,type])=>{
+
+  [
+    ["Total Contacts Handled (Week)","contacts","number"],
+    ["Within 60 Seconds (Week)","within60","percent"],
+    ["Ticket Volume (ERS Events)","ticketVolume","number"],
+    ["SOS Time","sos","time"],
+    ["Downtime","downtime","time"],
+    ["% of ERS Tickets w/ 3+ hour Downtime","threePlus","percent"],
+    ["% of ERS Tickets w/ 3+ hour Downtime (Controllable)","controllable","percent"]
+  ].forEach(([label,key,type])=>{
     const rowIndex=ersRows.length;
-    const exportedDelta=type==="time"
-      ?excelTimeDeltaText(dashboardData.ers.reportedDelta?.[key],ersPrior[key],ersCurrent[key])
-      :excelSourceDelta(dashboardData.ers.reportedDelta?.[key],ersPrior[key],ersCurrent[key],type);
 
     ersRows.push([
       label,
-      excelValue(ersPrior[key],type),
-      excelValue(ersCurrent[key],type),
-      exportedDelta
+      excelValue(ersWeek[key],type)
     ]);
-    ersTypes.push(type==="time"
-      ?[rowIndex,type,1,2]
-      :[rowIndex,type]
-    );
+
+    ersTypes.push([
+      rowIndex,
+      type,
+      1,
+      1
+    ]);
   });
 
   // Consolidated sheet is intentionally first.
   const consolidatedSheet=makeConsolidatedSheet([
     {
       rows:vrRows,
+      width:4,
       types:vrTypes,
       mergedRows:[usefulGroupRow]
     },
     {
       rows:ecdRows,
+      width:2,
       types:ecdTypes
     },
     {
       rows:maintRows,
-      types:maintTypes
+      width:6,
+      types:maintTypes,
+      fillerCells:maintFillerCells
     },
     {
       rows:vendorRows,
-      mergedRows:[vendorGroupRow]
+      width:2,
+      mergedRows:
+        vendorGroupRow===null
+          ?[]
+          :[vendorGroupRow]
     },
     {
       rows:ersRows,
+      width:2,
       types:ersTypes
     }
   ]);
@@ -3545,30 +3766,66 @@ function exportAllTables(){
     [34,15,15,15,23,18],
     maintTypes
   );
+
+  applyLinedFiller(
+    maintenanceSheet,
+    maintFillerCells
+  );
+
   XLSX.utils.book_append_sheet(
     wb,
     maintenanceSheet,
     "Vended Maintenance"
   );
 
-  const vendorSheet=makeSheet(vendorRows,[48,15,15,15]);
-  vendorSheet["!merges"]=(vendorSheet["!merges"]||[]).concat([{
-    s:{r:vendorGroupRow,c:0},
-    e:{r:vendorGroupRow,c:3}
-  }]);
-  const vendorGroupRef=XLSX.utils.encode_cell({r:vendorGroupRow,c:0});
-  vendorSheet[vendorGroupRef].s={
-    ...(vendorSheet[vendorGroupRef].s||{}),
-    font:{name:"Raleway",sz:10,color:{rgb:"334155"},bold:true},
-    fill:{fgColor:{rgb:"ECEFF2"}},
-    alignment:{horizontal:"left",vertical:"center"}
-  };
-  XLSX.utils.book_append_sheet(wb,vendorSheet,"Vendor Coverage");
+  const vendorSheet=makeSheet(
+    vendorRows,
+    [48,18]
+  );
+
+  if(vendorGroupRow!==null){
+    vendorSheet["!merges"]=(
+      vendorSheet["!merges"]||[]
+    ).concat([{
+      s:{r:vendorGroupRow,c:0},
+      e:{r:vendorGroupRow,c:1}
+    }]);
+
+    const vendorGroupRef=XLSX.utils.encode_cell({
+      r:vendorGroupRow,
+      c:0
+    });
+
+    vendorSheet[vendorGroupRef].s={
+      ...(vendorSheet[vendorGroupRef].s||{}),
+      font:{
+        name:"Raleway",
+        sz:10,
+        color:{rgb:"334155"},
+        bold:true
+      },
+      fill:{fgColor:{rgb:"ECEFF2"}},
+      alignment:{
+        horizontal:"left",
+        vertical:"center"
+      }
+    };
+  }
 
   XLSX.utils.book_append_sheet(
     wb,
-    makeSheet(ersRows,[48,16,16,24],ersTypes),
-    "ERS Metrics"
+    vendorSheet,
+    "Vendor Coverage"
+  );
+
+  XLSX.utils.book_append_sheet(
+    wb,
+    makeSheet(
+      ersRows,
+      [48,18],
+      ersTypes
+    ),
+    "ERS Reporting"
   );
 
   // Detailed ECD and scheduling reports are included in the same export.
