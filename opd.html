@@ -2043,7 +2043,21 @@ function parseGardaFlash(aoa,warnings){
       };
       ersCurrent[ersKey]=convert(row[6]);
       ersPrior[ersKey]=convert(row[7]);
-      ersDelta[ersKey]=convert(row[8]);
+
+      /*
+        ERS percentage deltas are calculated directly from the normalized
+        Current Week and Prior Week values. The GARDA FLASH Delta cell may
+        be stored in percentage points rather than as a decimal percentage,
+        which can otherwise overstate the displayed basis-point movement.
+      */
+      ersDelta[ersKey]=ersType==="percent"
+        ?(
+            isBlank(ersCurrent[ersKey])||
+            isBlank(ersPrior[ersKey])
+              ?null
+              :Number(ersCurrent[ersKey])-Number(ersPrior[ersKey])
+          )
+        :convert(row[8]);
     }
 
     const vendorLabel=String(row[10]??"").trim();
