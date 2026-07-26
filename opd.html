@@ -1204,7 +1204,7 @@
             </section>
           </div>
 
-          <div class="opd-footer"><strong>Workbook-derived:</strong> A single open order may count separately under PM, DOT, A/C, and LTS. ANNUAL INSPECTION routes to DOT and GARDA AC CHECK routes to A/C whenever those phrases appear anywhere inside the combined VRO task text, regardless of the order’s REPCLASS. PM remains driven by a PM REPCLASS and counts approved PM task names or other remaining PM-repclass task content after the separate DOT, A/C, LTS, and coolant phrases are removed. Repeated task phrases on one order are deduplicated by unique Order + program. Achievable Compliance uses the current GARDA FLASH percentage plus unique currently overdue VINs with valid non-unassigned ECDs; each date-bucket row shows the compliance achievable from completing the eligible VINs in that bucket. Scheduling Gap uses unique VINs from the AC, PM, DOT, and LTS tabs that are overdue or coming due and do not yet have every required task on a non-unassigned VRO with a valid ECD. Duplicate VIN interval rows use OR logic: if mileage or time/frequency reaches the threshold, the VIN is controlled by that requirement. OOS movement is calculated from the unique Unit # values marked OOS on the OOS GARDA tab for the approved 67 branches. Vehicles Returned to Service are units that were OOS in the prior Firebase snapshot but are not OOS today; New Units OOS are units that are OOS today but were not OOS in the prior snapshot.</div>
+          <div class="opd-footer"><strong>Workbook-derived:</strong> A single open order may count separately under PM, DOT, A/C, and LTS. ANNUAL INSPECTION routes to DOT and GARDA AC CHECK routes to A/C whenever those phrases appear anywhere inside the combined VRO task text, regardless of the order’s REPCLASS. PM remains driven by a PM REPCLASS and counts approved PM task names or other remaining PM-repclass task content after the separate DOT, A/C, LTS, and coolant phrases are removed. Repeated task phrases on one order are deduplicated by unique Order + program. Achievable Compliance uses the current GARDA FLASH percentage plus unique currently overdue VINs with valid non-unassigned ECDs; each date-bucket row shows the compliance achievable from completing the eligible VINs in that bucket. Scheduling Gap uses unique VINs from the AC, PM, DOT, and LTS tabs that are overdue or coming due and do not yet have every required task on a non-unassigned VRO with a valid ECD. Duplicate VIN interval rows use OR logic: if mileage or time/frequency reaches the threshold, the VIN is controlled by that requirement. OOS movement is calculated from the unique Unit # values marked OOS on the OOS GARDA tab for the approved 67 branches. Vehicles Returned to Service and New Units OOS are calculated for both days. Current Day compares today's OOS unit list to the prior snapshot; Prior Day compares the prior snapshot to the snapshot before it. Delta is Current Day minus Prior Day.</div>
         </div>
       </div>
     </section>
@@ -1260,6 +1260,7 @@ let lastParsed=null;
 let dashboardData=null;
 let supplementalData={};
 let priorSnapshot=null;
+let priorPriorSnapshot=null;
 let supplementalListenerRef=null;
 
 function localDateKey(date=new Date()){
@@ -2188,7 +2189,7 @@ function sourceDeltaCell(reportedDelta,prior,current,type="number"){
   }
   return `<td class="num ${cls}"><strong>${text}</strong></td>`;
 }
-function mergeComputedAndSupplemental(computed,supplemental,prior){
+function mergeComputedAndSupplemental(computed,supplemental,prior,priorPrior){
   const maintenance={};
   PROGRAMS.forEach(program=>{
     const source=computed.maintenance[program.key];
@@ -2235,12 +2236,41 @@ function mergeComputedAndSupplemental(computed,supplemental,prior){
   const vendedRepairCurrent={
     ...(computed.vendedRepair.current||{})
   };
+  const vendedRepairPrior={
+    ...(computed.vendedRepair.prior||{})
+  };
+
+  const movementCounts=(laterIds,earlierIds)=>{
+    if(
+      !Array.isArray(laterIds)||
+      !Array.isArray(earlierIds)
+    ){
+      return {
+        returnedToService:null,
+        newUnitsOos:null
+      };
+    }
+
+    const laterSet=new Set(laterIds);
+    const earlierSet=new Set(earlierIds);
+
+    return {
+      returnedToService:
+        [...earlierSet].filter(
+          unit=>!laterSet.has(unit)
+        ).length,
+      newUnitsOos:
+        [...laterSet].filter(
+          unit=>!earlierSet.has(unit)
+        ).length
+    };
+  };
 
   const currentOosIds=Array.isArray(
     vendedRepairCurrent.oosUnitIds
   )
     ?vendedRepairCurrent.oosUnitIds
-    :[];
+    :null;
 
   const priorOosIds=safePath(
     prior,
@@ -2248,23 +2278,49 @@ function mergeComputedAndSupplemental(computed,supplemental,prior){
     null
   );
 
-  if(Array.isArray(priorOosIds)){
-    const currentSet=new Set(currentOosIds);
-    const priorSet=new Set(priorOosIds);
+  const priorPriorOosIds=safePath(
+    priorPrior,
+    "vendedRepair.oosUnitIds",
+    null
+  );
 
-    vendedRepairCurrent.returnedToService=
-      [...priorSet].filter(
-        unit=>!currentSet.has(unit)
-      ).length;
+  const currentMovement=movementCounts(
+    currentOosIds,
+    priorOosIds
+  );
 
-    vendedRepairCurrent.newUnitsOos=
-      [...currentSet].filter(
-        unit=>!priorSet.has(unit)
-      ).length;
-  }else{
-    vendedRepairCurrent.returnedToService=null;
-    vendedRepairCurrent.newUnitsOos=null;
-  }
+  vendedRepairCurrent.returnedToService=
+    currentMovement.returnedToService;
+  vendedRepairCurrent.newUnitsOos=
+    currentMovement.newUnitsOos;
+
+  /*
+    Use the movement already saved in yesterday's snapshot when
+    available. Otherwise calculate it from yesterday's and the
+    day-before-yesterday unit lists.
+  */
+  const priorCalculatedMovement=movementCounts(
+    priorOosIds,
+    priorPriorOosIds
+  );
+
+  vendedRepairPrior.returnedToService=firstMetric(
+    safePath(
+      prior,
+      "vendedRepair.returnedToService",
+      null
+    ),
+    priorCalculatedMovement.returnedToService
+  );
+
+  vendedRepairPrior.newUnitsOos=firstMetric(
+    safePath(
+      prior,
+      "vendedRepair.newUnitsOos",
+      null
+    ),
+    priorCalculatedMovement.newUnitsOos
+  );
 
   const movementPriorOosIds=Array.isArray(priorOosIds)
     ?priorOosIds
@@ -2278,6 +2334,7 @@ function mergeComputedAndSupplemental(computed,supplemental,prior){
     },
     vendedRepair:{
       ...computed.vendedRepair,
+      prior:vendedRepairPrior,
       current:vendedRepairCurrent
     },
     maintenance,
@@ -2444,12 +2501,86 @@ async function fetchWorkbookBuffer(){
   for(let attempt=1;attempt<=2;attempt++){for(const bucket of buckets){try{const ref=bucket===configured?firebase.storage().ref().child(WORKBOOK_PATH):firebase.storage().refFromURL(`gs://${bucket}/${WORKBOOK_PATH}`);const url=await ref.getDownloadURL();return await fetchUrl(url);}catch(err){lastError=err;console.warn(`Workbook fetch attempt ${attempt} failed for ${bucket}`,err);}}await new Promise(r=>setTimeout(r,750));}
   throw new Error(`Firebase Storage fetch failed: ${lastError?.message||"Unknown error"}`);
 }
-async function loadPriorSnapshot(dateKey){
-  if(!db)return null;try{const snap=await db.ref(SNAPSHOT_ROOT).orderByKey().endAt(previousDateKey(dateKey)).limitToLast(1).once("value");const val=snap.val()||{};const keys=Object.keys(val).sort();if(keys.length)return val[keys[keys.length-1]];
-    const fallback=await db.ref("performanceReportingLogs/garda").orderByKey().endAt(previousDateKey(dateKey)).limitToLast(1).once("value");const fval=fallback.val()||{};const fkeys=Object.keys(fval).sort();if(fkeys.length){const f=fval[fkeys[fkeys.length-1]];return {vendor:{total:f.uniqueVendorCount??null},vendedRepair:{useful:f.usefulPct!=null?f.usefulPct/100:null,oos:f.oosUnits??null}};}return null;}catch(err){console.warn("Prior snapshot unavailable",err);return null;}
+async function loadPriorSnapshots(dateKey){
+  if(!db){
+    return {
+      prior:null,
+      priorPrior:null
+    };
+  }
+
+  try{
+    const snap=await db
+      .ref(SNAPSHOT_ROOT)
+      .orderByKey()
+      .endAt(previousDateKey(dateKey))
+      .limitToLast(2)
+      .once("value");
+
+    const values=snap.val()||{};
+    const keys=Object.keys(values).sort();
+
+    if(keys.length){
+      return {
+        prior:values[keys[keys.length-1]]||null,
+        priorPrior:
+          keys.length>1
+            ?values[keys[keys.length-2]]||null
+            :null
+      };
+    }
+
+    const fallback=await db
+      .ref("performanceReportingLogs/garda")
+      .orderByKey()
+      .endAt(previousDateKey(dateKey))
+      .limitToLast(1)
+      .once("value");
+
+    const fallbackValues=fallback.val()||{};
+    const fallbackKeys=Object.keys(fallbackValues).sort();
+
+    if(fallbackKeys.length){
+      const value=
+        fallbackValues[
+          fallbackKeys[fallbackKeys.length-1]
+        ];
+
+      return {
+        prior:{
+          vendor:{
+            total:value.uniqueVendorCount??null
+          },
+          vendedRepair:{
+            useful:
+              value.usefulPct!=null
+                ?value.usefulPct/100
+                :null,
+            oos:value.oosUnits??null
+          }
+        },
+        priorPrior:null
+      };
+    }
+
+    return {
+      prior:null,
+      priorPrior:null
+    };
+  }catch(err){
+    console.warn(
+      "Prior snapshots unavailable",
+      err
+    );
+
+    return {
+      prior:null,
+      priorPrior:null
+    };
+  }
 }
 async function loadSupplemental(dateKey){if(!db)return {};try{const snap=await db.ref(`${SUPPLEMENTAL_ROOT}/${dateKey}`).once("value");return snap.val()||{};}catch(err){console.warn("Supplemental metrics unavailable",err);return {};}}
-function startSupplementalListener(dateKey){if(!db)return;if(supplementalListenerRef)supplementalListenerRef.off();supplementalListenerRef=db.ref(`${SUPPLEMENTAL_ROOT}/${dateKey}`);supplementalListenerRef.on("value",snap=>{supplementalData=snap.val()||{};if(lastParsed){dashboardData=mergeComputedAndSupplemental(lastParsed,supplementalData,priorSnapshot);renderAll();}});}
+function startSupplementalListener(dateKey){if(!db)return;if(supplementalListenerRef)supplementalListenerRef.off();supplementalListenerRef=db.ref(`${SUPPLEMENTAL_ROOT}/${dateKey}`);supplementalListenerRef.on("value",snap=>{supplementalData=snap.val()||{};if(lastParsed){dashboardData=mergeComputedAndSupplemental(lastParsed,supplementalData,priorSnapshot,priorPriorSnapshot);renderAll();}});}
 async function saveSnapshot(data){if(!db||$("#report-date").value!==localDateKey())return;const dateKey=$("#report-date").value;const payload={savedAt:new Date().toISOString(),metadata:data.metadata,vendedRepair:data.vendedRepair.current,vrEcd:data.vrEcd,maintenance:Object.fromEntries(PROGRAMS.map(p=>[p.key,{compliance:data.maintenance[p.key].compliance,achievable:data.maintenance[p.key].achievable,gap:data.maintenance[p.key].gap,ecd:data.maintenance[p.key].ecd}])),vendor:{
   total:data.vendor.total,
   ers:data.vendor.ers,
@@ -2466,11 +2597,24 @@ async function processBuffer(buffer,sourceLabel){
   lastWorkbookBuffer=buffer;
   lastParsed=parseWorkbook(buffer);
   const dateKey=$("#report-date").value;
-  [priorSnapshot,supplementalData]=await Promise.all([
-    loadPriorSnapshot(dateKey),
+  const [
+    snapshotHistory,
+    loadedSupplementalData
+  ]=await Promise.all([
+    loadPriorSnapshots(dateKey),
     loadSupplemental(dateKey)
   ]);
-  dashboardData=mergeComputedAndSupplemental(lastParsed,supplementalData,priorSnapshot);
+
+  priorSnapshot=snapshotHistory.prior;
+  priorPriorSnapshot=snapshotHistory.priorPrior;
+  supplementalData=loadedSupplementalData;
+
+  dashboardData=mergeComputedAndSupplemental(
+    lastParsed,
+    supplementalData,
+    priorSnapshot,
+    priorPriorSnapshot
+  );
   renderAll();
   startSupplementalListener(dateKey);
   saveSnapshot(dashboardData);
@@ -2536,20 +2680,20 @@ function renderVendedRepair(){
   ];
 
   let rows=mainRows.map(([label,key,type,mode])=>{
-    if(mode==="movement"){
-      return `<tr>
-        <td class="sub-label movement-child">${label}</td>
-        ${cell(null,type)}
-        ${cell(current[key],type,true)}
-        ${cell(null,type)}
-      </tr>`;
-    }
+    const labelClass=
+      mode==="movement"
+        ?"sub-label movement-child"
+        :"label";
 
     return `<tr>
-      <td class="label">${label}</td>
+      <td class="${labelClass}">${label}</td>
       ${cell(prior[key],type)}
       ${cell(current[key],type,true)}
-      ${deltaCell(prior[key],current[key],type)}
+      ${deltaCell(
+        prior[key],
+        current[key],
+        type
+      )}
     </tr>`;
   }).join("");
 
@@ -3546,25 +3690,16 @@ function exportAllTables(){
   ].forEach(([label,key,type,mode])=>{
     const rowIndex=vrRows.length;
 
-    vrRows.push(
-      mode==="movement"
-        ?[
-            label,
-            null,
-            excelValue(vr.current[key],type),
-            null
-          ]
-        :[
-            label,
-            excelValue(vr.prior?.[key],type),
-            excelValue(vr.current[key],type),
-            excelDelta(
-              vr.prior?.[key],
-              vr.current[key],
-              type
-            )
-          ]
-    );
+    vrRows.push([
+      label,
+      excelValue(vr.prior?.[key],type),
+      excelValue(vr.current[key],type),
+      excelDelta(
+        vr.prior?.[key],
+        vr.current[key],
+        type
+      )
+    ]);
 
     vrTypes.push([rowIndex,type]);
   });
