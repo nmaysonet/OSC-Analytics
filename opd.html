@@ -1204,7 +1204,7 @@
             </section>
           </div>
 
-          <div class="opd-footer"><strong>Workbook-derived:</strong> A single open order may count separately under PM, DOT, A/C, and LTS. ANNUAL INSPECTION routes to DOT and GARDA AC CHECK routes to A/C whenever those phrases appear anywhere inside the combined VRO task text, regardless of the order’s REPCLASS. PM remains driven by a PM REPCLASS and counts approved PM task names or other remaining PM-repclass task content after the separate DOT, A/C, LTS, and coolant phrases are removed. Repeated task phrases on one order are deduplicated by unique Order + program. All PM-related compliance calculations use Garda's formula: 1 - (distinct overdue VINs / total active VINs). Achievable Compliance removes unique overdue VINs only when every required task is on a non-unassigned VRO with a valid ECD. When GARDA FLASH and the source tabs are on different refresh cycles, Achievable Compliance will not be shown below the Current Day compliance reported in GARDA FLASH. Scheduling Gap is the remaining opportunity between Achievable Compliance and 100%. Coming-due VINs stay in the detailed scheduling report but do not reduce compliance or Scheduling Gap until they become overdue. Duplicate VIN interval rows use OR logic: if mileage or time/frequency reaches the threshold, the VIN is controlled by that requirement. OOS movement is calculated from the unique Unit # values marked OOS on the OOS GARDA tab for the approved 67 branches. Vehicles Returned to Service and New Units OOS are calculated for both days. Current Day compares today's OOS unit list to the prior snapshot; Prior Day compares the prior snapshot to the snapshot before it. Delta is Current Day minus Prior Day. Maintenance VRO matching is performed by normalized VIN across all orders. The PM, DOT, AC, and LTS source tabs establish the approved 67-site VIN population, so a VRO is not discarded when its customer branch code is different, malformed, or blank. PM is recognized from a PM REPCLASS or approved PM task text; ANNUAL INSPECTION, GARDA AC CHECK, and GARDA LTS SYSTEM CHECK are recognized anywhere in combined task text. Completed or Final Charges Submitted work counts only when its completion date is later than the requirement's LASTDONE date on the source tab.</div>
+          <div class="opd-footer"><strong>Workbook-derived:</strong> A single open order may count separately under PM, DOT, A/C, and LTS. ANNUAL INSPECTION routes to DOT and GARDA AC CHECK routes to A/C whenever those phrases appear anywhere inside the combined VRO task text, regardless of the order’s REPCLASS. PM remains driven by a PM REPCLASS and counts approved PM task names or other remaining PM-repclass task content after the separate DOT, A/C, LTS, and coolant phrases are removed. Repeated task phrases on one order are deduplicated by unique Order + program. All PM-related compliance calculations use Garda's formula: 1 - (distinct overdue VINs / total active VINs). Achievable Compliance removes unique overdue VINs only when every required task is on a non-unassigned VRO with a valid ECD. When GARDA FLASH and the source tabs are on different refresh cycles, Achievable Compliance will not be shown below the Current Day compliance reported in GARDA FLASH. Scheduling Gap is calculated separately as unscheduled unique overdue VINs divided by total active VINs. Coming-due VINs stay in the detailed scheduling report but do not reduce compliance or Scheduling Gap until they become overdue. Duplicate VIN interval rows use OR logic: if mileage or time/frequency reaches the threshold, the VIN is controlled by that requirement. OOS movement is calculated from the unique Unit # values marked OOS on the OOS GARDA tab for the approved 67 branches. Vehicles Returned to Service and New Units OOS are calculated for both days. Current Day compares today's OOS unit list to the prior snapshot; Prior Day compares the prior snapshot to the snapshot before it. Delta is Current Day minus Prior Day. Maintenance VRO matching is performed by normalized VIN across all orders. The PM, DOT, AC, and LTS source tabs establish the approved 67-site VIN population, so a VRO is not discarded when its customer branch code is different, malformed, or blank. PM is recognized from a PM REPCLASS or approved PM task text; ANNUAL INSPECTION, GARDA AC CHECK, and GARDA LTS SYSTEM CHECK are recognized anywhere in combined task text. Completed or Final Charges Submitted work counts only when its completion date is later than the requirement's LASTDONE date on the source tab.</div>
         </div>
       </div>
     </section>
@@ -2189,7 +2189,7 @@ function projectedCompliance(program,currentCompliance,source,maintenanceItems){
     0,
     Math.min(
       1,
-      1-achievable
+      unscheduledOverdueUnits/source.totalUnits
     )
   );
 
@@ -2228,7 +2228,8 @@ function projectedCompliance(program,currentCompliance,source,maintenanceItems){
   /*
     Coming-due VINs remain available in the detailed scheduling export,
     but they do not reduce current compliance or Scheduling Gap until
-    they are actually overdue.
+    they are actually overdue. Scheduling Gap uses only unscheduled
+    unique overdue VINs divided by total active VINs.
   */
   let comingDueUnits=0;
   Object.values(source.units).forEach(unit=>{
@@ -3195,8 +3196,8 @@ function projectionCell(value,projection,kind){
         `GARDA FLASH reported compliance: ${pct(projection.officialCurrent)}.`
       ].join(" ")
     :[
-        `Scheduling Gap = distinct overdue VINs not fully scheduled / total active VINs.`,
-        `${projection.unscheduledOverdueUnits} overdue VINs remain out of ${projection.totalUnits} active VINs.`,
+        `Scheduling Gap = unscheduled unique overdue VINs / total active VINs.`,
+        `${projection.unscheduledOverdueUnits} overdue VINs remain unscheduled out of ${projection.totalUnits} active VINs.`,
         `${projection.noVroOverdueUnits} have no matching VRO.`,
         `${projection.unassignedOverdueUnits} remain in Unassigned ROs.`,
         `${projection.missingEcdOverdueUnits} have an active VRO without a valid ECD.`,
