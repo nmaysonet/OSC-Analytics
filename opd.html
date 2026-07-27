@@ -1204,7 +1204,7 @@
             </section>
           </div>
 
-          <div class="opd-footer"><strong>Workbook-derived:</strong> A single open order may count separately under PM, DOT, A/C, and LTS. ANNUAL INSPECTION routes to DOT and GARDA AC CHECK routes to A/C whenever those phrases appear anywhere inside the combined VRO task text, regardless of the order’s REPCLASS. PM remains driven by a PM REPCLASS and counts approved PM task names or other remaining PM-repclass task content after the separate DOT, A/C, LTS, and coolant phrases are removed. Repeated task phrases on one order are deduplicated by unique Order + program. Achievable Compliance uses the current GARDA FLASH percentage plus unique currently overdue VINs with valid non-unassigned ECDs; each date-bucket row shows the compliance achievable from completing the eligible VINs in that bucket. Scheduling Gap uses unique VINs from the AC, PM, DOT, and LTS tabs that are overdue or coming due and do not yet have every required task on a non-unassigned VRO with a valid ECD. Duplicate VIN interval rows use OR logic: if mileage or time/frequency reaches the threshold, the VIN is controlled by that requirement. OOS movement is calculated from the unique Unit # values marked OOS on the OOS GARDA tab for the approved 67 branches. Vehicles Returned to Service and New Units OOS are calculated for both days. Current Day compares today's OOS unit list to the prior snapshot; Prior Day compares the prior snapshot to the snapshot before it. Delta is Current Day minus Prior Day.</div>
+          <div class="opd-footer"><strong>Workbook-derived:</strong> A single open order may count separately under PM, DOT, A/C, and LTS. ANNUAL INSPECTION routes to DOT and GARDA AC CHECK routes to A/C whenever those phrases appear anywhere inside the combined VRO task text, regardless of the order’s REPCLASS. PM remains driven by a PM REPCLASS and counts approved PM task names or other remaining PM-repclass task content after the separate DOT, A/C, LTS, and coolant phrases are removed. Repeated task phrases on one order are deduplicated by unique Order + program. All PM-related compliance calculations use Garda's formula: 1 - (distinct overdue VINs / total active VINs). Achievable Compliance removes unique overdue VINs only when every required task is on a non-unassigned VRO with a valid ECD. Scheduling Gap is the remaining unique overdue VINs divided by total active VINs. Coming-due VINs stay in the detailed scheduling report but do not reduce compliance or Scheduling Gap until they become overdue. Duplicate VIN interval rows use OR logic: if mileage or time/frequency reaches the threshold, the VIN is controlled by that requirement. OOS movement is calculated from the unique Unit # values marked OOS on the OOS GARDA tab for the approved 67 branches. Vehicles Returned to Service and New Units OOS are calculated for both days. Current Day compares today's OOS unit list to the prior snapshot; Prior Day compares the prior snapshot to the snapshot before it. Delta is Current Day minus Prior Day.</div>
         </div>
       </div>
     </section>
@@ -1682,8 +1682,9 @@ function projectedCompliance(program,currentCompliance,source,maintenanceItems){
       achievable:null,
       gap:null,
       totalUnits:0,
+      overdueUnits:0,
       scheduledRecoverableUnits:0,
-      unscheduledAttentionUnits:0,
+      unscheduledOverdueUnits:0,
       bucketAchievable:{}
     };
   }
@@ -1706,29 +1707,60 @@ function projectedCompliance(program,currentCompliance,source,maintenanceItems){
 
   const scheduled=scheduledRequirementsByVin(maintenanceItems);
   const recoveryBuckets=emptyEcd();
+
   let scheduledRecoverableUnits=0;
   let partiallyScheduledOverdueUnits=0;
+  let noVroOverdueUnits=0;
+  let unassignedOverdueUnits=0;
+  let missingEcdOverdueUnits=0;
 
   /*
-    Only currently overdue VINs can raise today's compliance.
-    For each overdue requirement, use the earliest valid scheduled ECD.
-    For multi-requirement LTS VINs, the VIN is recoverable after the last
-    required task is scheduled, so use the latest of those earliest dates.
+    Garda compliance is based only on unique overdue VINs:
+      1 - (Distinct Overdue VINs / Total Active VINs)
+
+    A VIN can be removed from the achievable overdue count only when
+    every overdue requirement has a matching non-unassigned VRO with
+    a valid ECD.
   */
   Object.entries(source.units).forEach(([vin,unit])=>{
     const overdueRequirements=new Set(
       unit.overdueRequirements||[]
     );
+
     if(!overdueRequirements.size)return;
 
+    const allItems=itemsByVin.get(vin)||[];
     const scheduledForVin=scheduled.get(vin);
-    if(!scheduledForVin)return;
 
     let covered=0;
+    let anyRequirementItem=false;
+    let anyUnassigned=false;
+    let anyMissingEcd=false;
     const requirementCompletionDates=[];
 
     overdueRequirements.forEach(requirement=>{
-      const matches=(scheduledForVin.get(requirement)||[])
+      const requirementItems=allItems.filter(
+        item=>item.program===requirement
+      );
+
+      if(requirementItems.length){
+        anyRequirementItem=true;
+      }
+
+      if(requirementItems.some(
+        item=>item.status==="UNASSIGNED ROS"
+      )){
+        anyUnassigned=true;
+      }
+
+      if(requirementItems.some(
+        item=>item.status!=="UNASSIGNED ROS"&&
+              !parseDate(item.due)
+      )){
+        anyMissingEcd=true;
+      }
+
+      const matches=(scheduledForVin?.get(requirement)||[])
         .map(item=>({
           item,
           due:parseDate(item.due)
@@ -1747,9 +1779,12 @@ function projectedCompliance(program,currentCompliance,source,maintenanceItems){
 
       const complianceDate=new Date(
         Math.max(
-          ...requirementCompletionDates.map(date=>date.getTime())
+          ...requirementCompletionDates.map(
+            date=>date.getTime()
+          )
         )
       );
+
       const bucket=ecdBucket(
         complianceDate,
         selectedReportDate()
@@ -1758,108 +1793,97 @@ function projectedCompliance(program,currentCompliance,source,maintenanceItems){
       if(recoveryBuckets[bucket]!==undefined){
         recoveryBuckets[bucket]++;
       }
-    }else if(covered>0){
+
+      return;
+    }
+
+    if(covered>0){
       partiallyScheduledOverdueUnits++;
     }
-  });
 
-  /*
-    Scheduling Gap includes unique VINs that are already overdue or
-    are coming due. Every due requirement must have a non-unassigned
-    VRO with a valid ECD.
-  */
-  let attentionUnits=0;
-  let fullyScheduledAttentionUnits=0;
-  let noVroAttentionUnits=0;
-  let unassignedAttentionUnits=0;
-  let missingEcdAttentionUnits=0;
-  let partiallyScheduledAttentionUnits=0;
-
-  Object.entries(source.units).forEach(([vin,unit])=>{
-    const dueRequirements=new Set(unit.dueRequirements||[]);
-    if(!dueRequirements.size)return;
-
-    attentionUnits++;
-
-    const allItems=itemsByVin.get(vin)||[];
-    const scheduledForVin=scheduled.get(vin);
-    let covered=0;
-    let anyRequirementItem=false;
-    let anyUnassigned=false;
-    let anyMissingEcd=false;
-
-    dueRequirements.forEach(requirement=>{
-      const requirementItems=allItems.filter(
-        item=>item.program===requirement
-      );
-
-      if(requirementItems.length){
-        anyRequirementItem=true;
-      }
-      if(requirementItems.some(
-        item=>item.status==="UNASSIGNED ROS"
-      )){
-        anyUnassigned=true;
-      }
-      if(requirementItems.some(
-        item=>item.status!=="UNASSIGNED ROS"&&
-              !parseDate(item.due)
-      )){
-        anyMissingEcd=true;
-      }
-
-      if((scheduledForVin?.get(requirement)||[]).length){
-        covered++;
-      }
-    });
-
-    if(covered===dueRequirements.size){
-      fullyScheduledAttentionUnits++;
+    if(!anyRequirementItem){
+      noVroOverdueUnits++;
+    }else if(anyUnassigned){
+      unassignedOverdueUnits++;
+    }else if(anyMissingEcd){
+      missingEcdOverdueUnits++;
     }else{
-      if(covered>0)partiallyScheduledAttentionUnits++;
-
-      if(!anyRequirementItem){
-        noVroAttentionUnits++;
-      }else if(anyUnassigned){
-        unassignedAttentionUnits++;
-      }else if(anyMissingEcd){
-        missingEcdAttentionUnits++;
-      }else{
-        noVroAttentionUnits++;
-      }
+      noVroOverdueUnits++;
     }
   });
 
-  const unscheduledAttentionUnits=Math.max(
+  const overdueUnits=source.sourceNoncompliantUnits;
+  const unscheduledOverdueUnits=Math.max(
     0,
-    attentionUnits-fullyScheduledAttentionUnits
+    overdueUnits-scheduledRecoverableUnits
   );
 
-  const officialCurrent=Number(currentCompliance);
-  const sourceCompliance=
-    source.sourceCompliantUnits/source.totalUnits;
+  const sourceCompliance=Math.max(
+    0,
+    Math.min(
+      1,
+      1-(overdueUnits/source.totalUnits)
+    )
+  );
 
-  const baseline=Number.isFinite(officialCurrent)
-    ?officialCurrent
-    :sourceCompliance;
+  const achievable=Math.max(
+    0,
+    Math.min(
+      1,
+      1-(unscheduledOverdueUnits/source.totalUnits)
+    )
+  );
 
-  const achievable=Math.min(
-    1,
-    baseline+(scheduledRecoverableUnits/source.totalUnits)
+  const gap=Math.max(
+    0,
+    Math.min(
+      1,
+      unscheduledOverdueUnits/source.totalUnits
+    )
   );
 
   const bucketAchievable={};
-  ["pastDue","due03","due47","due814","due14"].forEach(key=>{
-    bucketAchievable[key]=Math.min(
-      1,
-      baseline+((recoveryBuckets[key]||0)/source.totalUnits)
+
+  [
+    "pastDue",
+    "due03",
+    "due47",
+    "due814",
+    "due14"
+  ].forEach(key=>{
+    const recoverableInBucket=
+      recoveryBuckets[key]||0;
+
+    const remainingOverdue=Math.max(
+      0,
+      overdueUnits-recoverableInBucket
+    );
+
+    bucketAchievable[key]=Math.max(
+      0,
+      Math.min(
+        1,
+        1-(remainingOverdue/source.totalUnits)
+      )
     );
   });
+
   bucketAchievable.missing=null;
 
-  const gap=attentionUnits
-    ?unscheduledAttentionUnits/attentionUnits
-    :0;
+  /*
+    Coming-due VINs remain available in the detailed scheduling export,
+    but they do not reduce current compliance or Scheduling Gap until
+    they are actually overdue.
+  */
+  let comingDueUnits=0;
+  Object.values(source.units).forEach(unit=>{
+    if(
+      !(unit.overdueRequirements||[]).length&&
+      (unit.comingDueRequirements||[]).length
+    ){
+      comingDueUnits++;
+    }
+  });
 
   const itemAudit={
     totalItems:programItems.length,
@@ -1884,6 +1908,8 @@ function projectedCompliance(program,currentCompliance,source,maintenanceItems){
     ).length
   };
 
+  const officialCurrent=Number(currentCompliance);
+
   return {
     program,
     achievable,
@@ -1895,18 +1921,17 @@ function projectedCompliance(program,currentCompliance,source,maintenanceItems){
       ?officialCurrent
       :null,
     sourceCompliance,
-    sourceCompliantUnits:source.sourceCompliantUnits,
-    sourceNoncompliantUnits:source.sourceNoncompliantUnits,
-    sourceComingDueUnits:source.sourceComingDueUnits,
-    attentionUnits,
+    sourceCompliantUnits:
+      source.totalUnits-overdueUnits,
+    sourceNoncompliantUnits:overdueUnits,
+    overdueUnits,
+    comingDueUnits,
     scheduledRecoverableUnits,
     partiallyScheduledOverdueUnits,
-    fullyScheduledAttentionUnits,
-    unscheduledAttentionUnits,
-    noVroAttentionUnits,
-    unassignedAttentionUnits,
-    missingEcdAttentionUnits,
-    partiallyScheduledAttentionUnits,
+    unscheduledOverdueUnits,
+    noVroOverdueUnits,
+    unassignedOverdueUnits,
+    missingEcdOverdueUnits,
     duplicateVinCount:source.duplicateVinCount,
     itemAudit
   };
@@ -1929,7 +1954,9 @@ function parseOosGarda(aoa,warnings,sheetName){
       oosUnits.set(unit,{
         unit,
         branchCode,
-        branchName:BRANCH_BY_CODE.get(branchCode)?.name||clean(row[2]),
+        branchName:
+          BRANCH_BY_CODE.get(branchCode)?.name||
+          clean(row[2]),
         shopName:clean(row[2]),
         unitType:clean(row[4]),
         make:clean(row[5]),
@@ -2717,22 +2744,27 @@ function projectionCell(value,projection,kind){
   if(!projection)return cell(value,"percent");
 
   const note=kind==="achievable"
-    ?`${projection.scheduledRecoverableUnits.toLocaleString()} overdue VINs with valid ECDs`
-    :`${projection.unscheduledAttentionUnits.toLocaleString()} of ${projection.attentionUnits.toLocaleString()} due/overdue VINs unscheduled`;
+    ?`${projection.scheduledRecoverableUnits.toLocaleString()} overdue VINs fully scheduled`
+    :`${projection.unscheduledOverdueUnits.toLocaleString()} overdue VINs remain`;
 
   const title=kind==="achievable"
     ?[
-        `Achievable Compliance = current GARDA FLASH compliance plus unique currently overdue VINs with a valid scheduled ECD, divided by ${projection.totalUnits} unique source VINs.`,
-        `${projection.scheduledRecoverableUnits} overdue VINs are fully scheduled.`,
-        `${projection.partiallyScheduledOverdueUnits} overdue VINs are only partially scheduled.`,
-        `Current baseline: ${pct(projection.officialCurrent)}.`
+        `Garda formula: 1 - (distinct overdue VINs remaining after fully scheduled work / total active VINs).`,
+        `${projection.overdueUnits} unique VINs are currently overdue.`,
+        `${projection.scheduledRecoverableUnits} overdue VINs have every required task on a non-unassigned VRO with a valid ECD.`,
+        `${projection.unscheduledOverdueUnits} overdue VINs remain.`,
+        `Total active VINs: ${projection.totalUnits}.`,
+        `Source compliance from the Garda formula: ${pct(projection.sourceCompliance)}.`,
+        `GARDA FLASH reported compliance: ${pct(projection.officialCurrent)}.`
       ].join(" ")
     :[
-        `Scheduling Gap includes VINs that are overdue or coming due.`,
-        `${projection.noVroAttentionUnits} have no matching VRO.`,
-        `${projection.unassignedAttentionUnits} remain in Unassigned ROs.`,
-        `${projection.missingEcdAttentionUnits} have an active VRO without a valid ECD.`,
-        `${projection.partiallyScheduledAttentionUnits} have only part of the required work scheduled.`
+        `Scheduling Gap = distinct overdue VINs not fully scheduled / total active VINs.`,
+        `${projection.unscheduledOverdueUnits} overdue VINs remain out of ${projection.totalUnits} active VINs.`,
+        `${projection.noVroOverdueUnits} have no matching VRO.`,
+        `${projection.unassignedOverdueUnits} remain in Unassigned ROs.`,
+        `${projection.missingEcdOverdueUnits} have an active VRO without a valid ECD.`,
+        `${projection.partiallyScheduledOverdueUnits} have only part of the overdue work scheduled.`,
+        `Coming-due VINs are excluded until they become overdue.`
       ].join(" ");
 
   return `<td class="num ${isBlank(value)?"empty":""}" title="${escapeHtml(title)}">
@@ -2782,8 +2814,8 @@ function bucketAchievableCell(metric,rowKey){
   const value=metric.projection.bucketAchievable?.[rowKey];
 
   const title=
-    `${count} unique currently overdue VIN${count===1?"":"s"} can become compliant by completing the scheduled work in this ECD bucket. `+
-    `Calculation: ${pct(metric.compliance)} current compliance + ${count}/${metric.projection.totalUnits}.`;
+    `${count} unique currently overdue VIN${count===1?"":"s"} can be removed from the overdue count by completing the scheduled work in this ECD bucket. `+
+    `Calculation: 1 - ((${metric.projection.overdueUnits} overdue VINs - ${count} eligible VINs) / ${metric.projection.totalUnits} active VINs).`;
 
   if(isBlank(value)){
     return `<td class="maintenance-filler" title="Not applicable"></td>`;
