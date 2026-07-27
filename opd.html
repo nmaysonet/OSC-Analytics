@@ -1204,7 +1204,7 @@
             </section>
           </div>
 
-          <div class="opd-footer"><strong>Workbook-derived:</strong> A single open order may count separately under PM, DOT, A/C, and LTS. ANNUAL INSPECTION routes to DOT and GARDA AC CHECK routes to A/C whenever those phrases appear anywhere inside the combined VRO task text, regardless of the order’s REPCLASS. PM remains driven by a PM REPCLASS and counts approved PM task names or other remaining PM-repclass task content after the separate DOT, A/C, LTS, and coolant phrases are removed. Repeated task phrases on one order are deduplicated by unique Order + program. All PM-related compliance calculations use Garda's formula: 1 - (distinct overdue VINs / total active VINs). Achievable Compliance removes unique overdue VINs only when every required task is on a non-unassigned VRO with a valid ECD. Scheduling Gap is the remaining unique overdue VINs divided by total active VINs. Coming-due VINs stay in the detailed scheduling report but do not reduce compliance or Scheduling Gap until they become overdue. Duplicate VIN interval rows use OR logic: if mileage or time/frequency reaches the threshold, the VIN is controlled by that requirement. OOS movement is calculated from the unique Unit # values marked OOS on the OOS GARDA tab for the approved 67 branches. Vehicles Returned to Service and New Units OOS are calculated for both days. Current Day compares today's OOS unit list to the prior snapshot; Prior Day compares the prior snapshot to the snapshot before it. Delta is Current Day minus Prior Day.</div>
+          <div class="opd-footer"><strong>Workbook-derived:</strong> A single open order may count separately under PM, DOT, A/C, and LTS. ANNUAL INSPECTION routes to DOT and GARDA AC CHECK routes to A/C whenever those phrases appear anywhere inside the combined VRO task text, regardless of the order’s REPCLASS. PM remains driven by a PM REPCLASS and counts approved PM task names or other remaining PM-repclass task content after the separate DOT, A/C, LTS, and coolant phrases are removed. Repeated task phrases on one order are deduplicated by unique Order + program. All PM-related compliance calculations use Garda's formula: 1 - (distinct overdue VINs / total active VINs). Achievable Compliance removes unique overdue VINs only when every required task is on a non-unassigned VRO with a valid ECD. When GARDA FLASH and the source tabs are on different refresh cycles, Achievable Compliance will not be shown below the Current Day compliance reported in GARDA FLASH. Scheduling Gap is the remaining opportunity between Achievable Compliance and 100%. Coming-due VINs stay in the detailed scheduling report but do not reduce compliance or Scheduling Gap until they become overdue. Duplicate VIN interval rows use OR logic: if mileage or time/frequency reaches the threshold, the VIN is controlled by that requirement. OOS movement is calculated from the unique Unit # values marked OOS on the OOS GARDA tab for the approved 67 branches. Vehicles Returned to Service and New Units OOS are calculated for both days. Current Day compares today's OOS unit list to the prior snapshot; Prior Day compares the prior snapshot to the snapshot before it. Delta is Current Day minus Prior Day.</div>
         </div>
       </div>
     </section>
@@ -1826,7 +1826,7 @@ function projectedCompliance(program,currentCompliance,source,maintenanceItems){
     )
   );
 
-  const achievable=Math.max(
+  const scheduledProjection=Math.max(
     0,
     Math.min(
       1,
@@ -1834,11 +1834,16 @@ function projectedCompliance(program,currentCompliance,source,maintenanceItems){
     )
   );
 
+  const officialCurrent=Number(currentCompliance);
+  const achievable=Number.isFinite(officialCurrent)
+    ?Math.max(officialCurrent,scheduledProjection)
+    :scheduledProjection;
+
   const gap=Math.max(
     0,
     Math.min(
       1,
-      unscheduledOverdueUnits/source.totalUnits
+      1-achievable
     )
   );
 
@@ -1859,13 +1864,17 @@ function projectedCompliance(program,currentCompliance,source,maintenanceItems){
       overdueUnits-recoverableInBucket
     );
 
-    bucketAchievable[key]=Math.max(
+    const bucketProjection=Math.max(
       0,
       Math.min(
         1,
         1-(remainingOverdue/source.totalUnits)
       )
     );
+
+    bucketAchievable[key]=Number.isFinite(officialCurrent)
+      ?Math.max(officialCurrent,bucketProjection)
+      :bucketProjection;
   });
 
   bucketAchievable.missing=null;
@@ -1907,8 +1916,6 @@ function projectedCompliance(program,currentCompliance,source,maintenanceItems){
       !parseDate(item.due)
     ).length
   };
-
-  const officialCurrent=Number(currentCompliance);
 
   return {
     program,
@@ -2092,15 +2099,53 @@ function parseGardaFlash(aoa,warnings){
     return Number.isFinite(number)?number:null;
   };
 
+  const flashHeader=aoa[0]||[];
+  const serviceIndex=headerIndex(
+    flashHeader,
+    ["SERVICE"],
+    0
+  );
+  const currentDayIndex=headerIndex(
+    flashHeader,
+    ["CURRENT DAY","CURRENT COMPLIANCE"],
+    1
+  );
+  const priorDayIndex=headerIndex(
+    flashHeader,
+    ["DAY PRIOR","PRIOR DAY"],
+    2
+  );
+  const deltaIndex=headerIndex(
+    flashHeader,
+    ["DELTA"],
+    3
+  );
+
   for(let rowIndex=1;rowIndex<aoa.length;rowIndex++){
     const row=aoa[rowIndex]||[];
 
-    const programKey=flashProgramKey(row[0]);
+    const programKey=flashProgramKey(
+      row[serviceIndex]
+    );
+
     if(programKey){
+      const currentCompliance=normalizeFlashPercent(
+        row[currentDayIndex]
+      );
+      const priorCompliance=normalizeFlashPercent(
+        row[priorDayIndex]
+      );
+
       maintenance[programKey]={
-        compliance:normalizeFlashPercent(row[1]),
-        priorCompliance:normalizeFlashPercent(row[2]),
-        reportedDelta:normalizeFlashPercentagePointDelta(row[3])
+        compliance:currentCompliance,
+        priorCompliance,
+        reportedDelta:
+          !isBlank(currentCompliance)&&
+          !isBlank(priorCompliance)
+            ?Number(currentCompliance)-Number(priorCompliance)
+            :normalizeFlashPercentagePointDelta(
+                row[deltaIndex]
+              )
       };
     }
 
@@ -2222,15 +2267,13 @@ function mergeComputedAndSupplemental(computed,supplemental,prior,priorPrior){
     const source=computed.maintenance[program.key];
     maintenance[program.key]={
       ...source,
-      priorCompliance:firstMetric(
-        source.priorCompliance,
-        safePath(prior,`maintenance.${program.key}.compliance`,null)
-      ),
-      compliance:firstMetric(
-        source.compliance,
-        safePath(supplemental,`maintenance.${program.key}.current`,null)
-      ),
-      reportedDelta:source.reportedDelta,
+      priorCompliance:source.priorCompliance,
+      compliance:source.compliance,
+      reportedDelta:
+        !isBlank(source.compliance)&&
+        !isBlank(source.priorCompliance)
+          ?Number(source.compliance)-Number(source.priorCompliance)
+          :source.reportedDelta,
       achievable:firstMetric(
         source.achievable,
         safePath(supplemental,`maintenance.${program.key}.achievable`,null)
@@ -2424,7 +2467,7 @@ function parseWorkbook(buffer){
   ],useful.name,warnings);
   validateHeader(gardaFlash.aoa,[
     [0,"SERVICE"],
-    [1,"CURRENT COMPLIANCE"],
+    [1,"CURRENT DAY"],
     [2,"DAY PRIOR"],
     [3,"DELTA"],
     [5,"ERS REPORTING"],
