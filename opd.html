@@ -1204,7 +1204,7 @@
             </section>
           </div>
 
-          <div class="opd-footer"><strong>Workbook-derived:</strong> A single open order may count separately under PM, DOT, A/C, and LTS. ANNUAL INSPECTION routes to DOT and GARDA AC CHECK routes to A/C whenever those phrases appear anywhere inside the combined VRO task text, regardless of the order’s REPCLASS. PM remains driven by a PM REPCLASS and counts approved PM task names or other remaining PM-repclass task content after the separate DOT, A/C, LTS, and coolant phrases are removed. Repeated task phrases on one order are deduplicated by unique Order + program. All PM-related compliance calculations use Garda's formula: 1 - (distinct overdue VINs / total active VINs). Achievable Compliance removes unique overdue VINs only when every required task is on a non-unassigned VRO with a valid ECD. When GARDA FLASH and the source tabs are on different refresh cycles, Achievable Compliance will not be shown below the Current Day compliance reported in GARDA FLASH. Scheduling Gap is the remaining opportunity between Achievable Compliance and 100%. Coming-due VINs stay in the detailed scheduling report but do not reduce compliance or Scheduling Gap until they become overdue. Duplicate VIN interval rows use OR logic: if mileage or time/frequency reaches the threshold, the VIN is controlled by that requirement. OOS movement is calculated from the unique Unit # values marked OOS on the OOS GARDA tab for the approved 67 branches. Vehicles Returned to Service and New Units OOS are calculated for both days. Current Day compares today's OOS unit list to the prior snapshot; Prior Day compares the prior snapshot to the snapshot before it. Delta is Current Day minus Prior Day.</div>
+          <div class="opd-footer"><strong>Workbook-derived:</strong> A single open order may count separately under PM, DOT, A/C, and LTS. ANNUAL INSPECTION routes to DOT and GARDA AC CHECK routes to A/C whenever those phrases appear anywhere inside the combined VRO task text, regardless of the order’s REPCLASS. PM remains driven by a PM REPCLASS and counts approved PM task names or other remaining PM-repclass task content after the separate DOT, A/C, LTS, and coolant phrases are removed. Repeated task phrases on one order are deduplicated by unique Order + program. All PM-related compliance calculations use Garda's formula: 1 - (distinct overdue VINs / total active VINs). Achievable Compliance removes unique overdue VINs only when every required task is on a non-unassigned VRO with a valid ECD. When GARDA FLASH and the source tabs are on different refresh cycles, Achievable Compliance will not be shown below the Current Day compliance reported in GARDA FLASH. Scheduling Gap is the remaining opportunity between Achievable Compliance and 100%. Coming-due VINs stay in the detailed scheduling report but do not reduce compliance or Scheduling Gap until they become overdue. Duplicate VIN interval rows use OR logic: if mileage or time/frequency reaches the threshold, the VIN is controlled by that requirement. OOS movement is calculated from the unique Unit # values marked OOS on the OOS GARDA tab for the approved 67 branches. Vehicles Returned to Service and New Units OOS are calculated for both days. Current Day compares today's OOS unit list to the prior snapshot; Prior Day compares the prior snapshot to the snapshot before it. Delta is Current Day minus Prior Day. Maintenance VRO matching is performed by normalized VIN across all orders. The PM, DOT, AC, and LTS source tabs establish the approved 67-site VIN population, so a VRO is not discarded when its customer branch code is different, malformed, or blank. PM is recognized from a PM REPCLASS or approved PM task text; ANNUAL INSPECTION, GARDA AC CHECK, and GARDA LTS SYSTEM CHECK are recognized anywhere in combined task text. Completed or Final Charges Submitted work counts only when its completion date is later than the requirement's LASTDONE date on the source tab.</div>
         </div>
       </div>
     </section>
@@ -1217,6 +1217,11 @@ const WORKBOOK_PATH="master_workFLOWtest.xlsx";
 const SNAPSHOT_ROOT="operationalPerformanceTables/gardaSnapshots";
 const SUPPLEMENTAL_ROOT="operationalPerformanceTables/manualMetrics";
 const OPEN_STATUSES=new Set(["UNASSIGNED ROS","ESTIMATES","PENDING ESTIMATES","WORK IN PROGRESS"]);
+const COMPLETED_STATUSES=new Set(["COMPLETED","FINAL CHARGES SUBMITTED"]);
+const MAINTENANCE_STATUSES=new Set([
+  ...OPEN_STATUSES,
+  ...COMPLETED_STATUSES
+]);
 const DEFAULT_VENDOR_PATTERNS=["DEFAULT BLANKET VENDOR","SYSTEM USE ONLY","DO NOT BILL","NO VENDOR"];
 const APPROVED_BRANCHES=[
 ["Birmingham, AL","260-22"],["Charleston, SC","250-92"],["Hampton-Chespeake, VA","140-31"],["Knoxville, TN","270-10"],["Memphis, TN","270-32"],["Myrtle Beach, SC","250-97"],["Nashville, TN","270-08"],["Richmond, VA","140-89"],["Roanoke, VA","140-24"],["Kansas City, KS","130-63"],["Lexington, KY","270-65"],["Salina, KS","130-62"],["St. Louis, MO","130-69"],["Wichita, KS","130-65"],["Cincinnati, OH","190-67"],["Columbus, OH","190-64"],["Dayton, OH","190-65"],["Grand Rapids, MI","190-60"],["Bloomington, IL","190-24"],["Chippewa Falls, WI","190-53"],["Davenport, IA","190-45"],["Duluth, MN","190-58"],["Green Bay, WI","190-55"],["Madison, WI","190-56"],["Dover, DE","140-92"],["Johnstown, PA","140-82"],["Wilkes Barre, PA","140-95"],["Burlington, VT","144-21"],["Rochester, NY","280-55"],["Schenectady, NY","140-27"],["West Hempstead, NY","140-28"],["Austin, TX","130-75"],["Corpus Christi, TX","130-72"],["El Paso, TX","130-20"],["Laredo, TX","130-76"],["Little Rock, AR","260-07"],["Lubbock, TX","130-11"],["McAllen, TX","130-74"],["Shreveport, LA","260-03"],["Jackson, MS","260-23"],["Jacksonville, FL","260-19"],["Lafayette, LA","260-01"],["Mobile, AL","260-31"],["New Orleans, LA","260-02"],["Red Bluff, CA","120-15"],["Sparks, NV","120-61"],["Bend, OR","230-60"],["Boise, ID","230-39"],["Helena, MT","230-87"],["Lewiston, ID","230-80"],["Medford, OR","230-59"],["Missoula, MT","230-91"],["Mt. Vernon, WA","230-53"],["Renton, WA","230-51"],["Roseburg, OR","230-58"],["Spokane, WA","230-50"],["Tacoma, WA","230-52"],["Wenatchee, WA","230-49"],["Yakima, WA","230-47"],["Santa Maria, CA","120-23"],["Albuquerque, NM","130-88"],["Casper, WY","230-95"],["Cheyenne, WY","230-96"],["Colorado Springs, CO","230-16"],["Flagstaff, AZ","120-27"],["Grand Junction, CO","230-34"],["Tucson, AZ","120-82"]
@@ -1329,47 +1334,27 @@ function maintenanceTaskTypes(task,service){
   const hasPmTask=PM_TASK_PHRASES.some(
     phrase=>text.includes(phrase)
   );
-  const hasDot=text.includes("ANNUAL INSPECTION");
-  const hasAc=text.includes("GARDA AC CHECK");
-  const hasLts=text.includes("GARDA LTS SYSTEM CHECK");
-  const hasCoolant=text.includes("GARDA COOLANT SYSTEM CHECK");
+
+  if(text.includes("ANNUAL INSPECTION")){
+    types.add("dot");
+  }
+  if(text.includes("GARDA AC CHECK")){
+    types.add("ac");
+  }
+  if(text.includes("GARDA LTS SYSTEM CHECK")){
+    types.add("lts");
+  }
+  if(text.includes("GARDA COOLANT SYSTEM CHECK")){
+    types.add("coolant");
+  }
 
   /*
-    DOT, A/C, LTS, and coolant are task-driven. The phrases can appear
-    alone, multiple times, or anywhere inside a combined task string.
-    They are not rejected because the order has a non-PM REPCLASS.
+    PM is identified by either the REPCLASS mapping or an approved
+    PM task phrase. This also handles OSC PM orders with blank tasks
+    and PM tasks placed on another maintenance REPCLASS.
   */
-  if(hasDot)types.add("dot");
-  if(hasAc)types.add("ac");
-  if(hasLts)types.add("lts");
-  if(hasCoolant)types.add("coolant");
-
-  /*
-    PM is REPCLASS-driven. Remove the task phrases that belong to the
-    separate programs; any remaining task content is PM-repclass work.
-    Approved named PM tasks always count as PM.
-  */
-  if(service==="PM"){
-    let remaining=text;
-
-    [
-      ...PM_TASK_PHRASES,
-      "ANNUAL INSPECTION",
-      "DOT INSPECTION",
-      "GARDA AC CHECK",
-      "GARDA LTS SYSTEM CHECK",
-      "GARDA COOLANT SYSTEM CHECK"
-    ].forEach(phrase=>{
-      remaining=remaining.split(phrase).join(" ");
-    });
-
-    const hasOtherPmWork=Boolean(
-      remaining.replace(/[^A-Z0-9]/g,"")
-    );
-
-    if(hasPmTask||hasOtherPmWork||!text){
-      types.add("pm");
-    }
+  if(service==="PM"||hasPmTask){
+    types.add("pm");
   }
 
   return [...types];
@@ -1394,86 +1379,272 @@ function mergeOrder(existing,incoming){
 }
 function mergeMaintenanceItem(existing,incoming){
   if(!existing)return {...incoming};
+
   const existingDue=parseDate(existing.due);
   const incomingDue=parseDate(incoming.due);
-  if(!existingDue&&incomingDue)existing.due=incoming.due;
-  else if(existingDue&&incomingDue&&incomingDue<existingDue)existing.due=incoming.due;
-  if(existing.status==="UNASSIGNED ROS"&&incoming.status!=="UNASSIGNED ROS")existing.status=incoming.status;
-  if(!existing.vin&&incoming.vin)existing.vin=incoming.vin;
+
+  if(!existingDue&&incomingDue){
+    existing.due=incoming.due;
+  }else if(
+    existingDue&&
+    incomingDue&&
+    incomingDue<existingDue
+  ){
+    existing.due=incoming.due;
+  }
+
+  const existingCompleted=parseDate(
+    existing.completedDate
+  );
+  const incomingCompleted=parseDate(
+    incoming.completedDate
+  );
+
+  if(!existingCompleted&&incomingCompleted){
+    existing.completedDate=incoming.completedDate;
+  }else if(
+    existingCompleted&&
+    incomingCompleted&&
+    incomingCompleted>existingCompleted
+  ){
+    existing.completedDate=incoming.completedDate;
+  }
+
+  if(
+    existing.status==="UNASSIGNED ROS"&&
+    incoming.status!=="UNASSIGNED ROS"
+  ){
+    existing.status=incoming.status;
+  }
+
+  if(!existing.vin&&incoming.vin){
+    existing.vin=incoming.vin;
+  }
+
+  if(
+    incoming.task&&
+    !upper(existing.task).includes(upper(incoming.task))
+  ){
+    existing.task=[
+      existing.task,
+      incoming.task
+    ].filter(Boolean).join(" | ");
+  }
+
   return existing;
 }
-function parseVroRows(aoa,repclassMap,reportDate,warnings){
+function parseVroRows(
+  aoa,
+  repclassMap,
+  reportDate,
+  warnings,
+  maintenanceVinScope=new Map()
+){
   const orders=new Map();
   const maintenanceItems=new Map();
-  let eligibleRows=0,unmapped=0,missingOrder=0;
+
+  let eligibleRows=0;
+  let unmapped=0;
+  let missingOrder=0;
+  let maintenanceRowsMatchedByVin=0;
 
   for(let i=1;i<aoa.length;i++){
     const row=aoa[i]||[];
     const customer=clean(row[0]);
-    if(!/\bGARDA\b/i.test(customer))continue;
-    const branchCode=extractBranchCode(customer);
-    if(!APPROVED_CODES.has(branchCode))continue;
+
+    if(!/\bGARDA\b/i.test(customer)){
+      continue;
+    }
+
+    const vin=normalizedVin(row[2]);
+    const branchCode=extractBranchCode(
+      customer
+    );
     const status=upper(row[14]);
-    if(!OPEN_STATUSES.has(status))continue;
+
+    const approvedVrRow=
+      APPROVED_CODES.has(branchCode)&&
+      OPEN_STATUSES.has(status);
+
+    const maintenanceSource=
+      maintenanceVinScope.get(vin);
+
+    const approvedMaintenanceRow=
+      Boolean(maintenanceSource)&&
+      MAINTENANCE_STATUSES.has(status);
+
+    if(
+      !approvedVrRow&&
+      !approvedMaintenanceRow
+    ){
+      continue;
+    }
+
     eligibleRows++;
 
     const order=clean(row[7]);
-    if(!order){missingOrder++;continue;}
+
+    if(!order){
+      missingOrder++;
+      continue;
+    }
+
     const repclass=upper(row[4]);
-    const service=repclassMap.get(repclass)||"UNMAPPED";
-    if(service==="UNMAPPED")unmapped++;
+    const service=
+      repclassMap.get(repclass)||
+      "UNMAPPED";
+
+    if(service==="UNMAPPED"){
+      unmapped++;
+    }
+
     const task=clean(row[5]);
-    const vin=upper(row[2]).replace(/\s+/g,"");
 
-    const record={
-      order,customer,branchCode,
-      branchName:BRANCH_BY_CODE.get(branchCode)?.name||customer,
-      repclass,service,task,vin,
-      due:row[11],vendor:clean(row[12]),status,opened:row[8],vendors:new Set()
-    };
-    orders.set(order,mergeOrder(orders.get(order),record));
-
-    maintenanceTaskTypes(task,service).forEach(program=>{
-      const itemKey=`${order}|${program}`;
-      const item={
-        itemKey,
+    if(approvedVrRow){
+      const record={
         order,
-        program,
-        vin,
         customer,
         branchCode,
-        branchName:BRANCH_BY_CODE.get(branchCode)?.name||customer,
+        branchName:
+          BRANCH_BY_CODE.get(branchCode)?.name||
+          customer,
         repclass,
         service,
         task,
+        vin,
         due:row[11],
+        vendor:clean(row[12]),
         status,
-        opened:row[8]
+        opened:row[8],
+        completedDate:row[15],
+        vendors:new Set()
       };
-      maintenanceItems.set(
-        itemKey,
-        mergeMaintenanceItem(maintenanceItems.get(itemKey),item)
+
+      orders.set(
+        order,
+        mergeOrder(
+          orders.get(order),
+          record
+        )
       );
-    });
+    }
+
+    if(approvedMaintenanceRow){
+      if(!APPROVED_CODES.has(branchCode)){
+        maintenanceRowsMatchedByVin++;
+      }
+
+      maintenanceTaskTypes(
+        task,
+        service
+      ).forEach(program=>{
+        const itemKey=
+          `${order}|${program}`;
+
+        const item={
+          itemKey,
+          order,
+          program,
+          vin,
+          customer,
+          branchCode:
+            maintenanceSource.branchCode||
+            branchCode,
+          branchName:
+            maintenanceSource.branchName||
+            BRANCH_BY_CODE.get(branchCode)?.name||
+            customer,
+          sourceShopName:
+            maintenanceSource.shopName||
+            "",
+          vroBranchCode:branchCode,
+          repclass,
+          service,
+          task,
+          due:row[11],
+          status,
+          opened:row[8],
+          completedDate:row[15]
+        };
+
+        maintenanceItems.set(
+          itemKey,
+          mergeMaintenanceItem(
+            maintenanceItems.get(itemKey),
+            item
+          )
+        );
+      });
+    }
   }
 
-  if(unmapped)warnings.push(`${unmapped} eligible row(s) had a REPCLASS not mapped on the REPCLASS tab.`);
-  if(missingOrder)warnings.push(`${missingOrder} eligible row(s) were excluded because Column H Order was blank.`);
+  if(unmapped){
+    warnings.push(
+      `${unmapped} eligible row(s) had a REPCLASS not mapped on the REPCLASS tab.`
+    );
+  }
 
-  const orderList=[...orders.values()];
-  orderList.forEach(order=>{order.bucket=ecdBucket(order.due,reportDate);});
-  const maintenanceList=[...maintenanceItems.values()];
+  if(missingOrder){
+    warnings.push(
+      `${missingOrder} eligible row(s) were excluded because Column H Order was blank.`
+    );
+  }
+
+  if(maintenanceRowsMatchedByVin){
+    warnings.push(
+      `${maintenanceRowsMatchedByVin} maintenance row(s) were matched by VIN because the VRO customer branch did not match the source-tab branch.`
+    );
+  }
+
+  const orderList=[
+    ...orders.values()
+  ];
+
+  orderList.forEach(order=>{
+    order.bucket=ecdBucket(
+      order.due,
+      reportDate
+    );
+  });
+
+  const maintenanceList=[
+    ...maintenanceItems.values()
+  ];
+
   maintenanceList.forEach(item=>{
-    item.bucket=ecdBucket(item.due,reportDate);
-    item.scheduled=item.status!=="UNASSIGNED ROS"&&Boolean(parseDate(item.due));
+    item.scheduled=
+      OPEN_STATUSES.has(item.status)&&
+      item.status!=="UNASSIGNED ROS"&&
+      Boolean(parseDate(item.due));
+
+    item.completed=
+      COMPLETED_STATUSES.has(item.status)&&
+      Boolean(
+        parseDate(item.completedDate)
+      );
+
+    const bucketDate=item.scheduled
+      ?item.due
+      :item.completed
+        ?item.completedDate
+        :item.due;
+
+    item.bucket=ecdBucket(
+      bucketDate,
+      reportDate
+    );
   });
 
   return {
     orders:orderList,
     maintenanceItems:maintenanceList,
     eligibleRows,
-    duplicateRows:Math.max(0,eligibleRows-orderList.length),
-    unmapped
+    duplicateRows:Math.max(
+      0,
+      eligibleRows-orderList.length
+    ),
+    unmapped,
+    maintenanceRowsMatchedByVin
   };
 }
 function summarizeOrders(orders){
@@ -1485,7 +1656,12 @@ function summarizeOrders(orders){
   return summary;
 }
 function summarizeMaintenanceItems(items,program){
-  return summarizeOrders(items.filter(item=>item.program===program));
+  return summarizeOrders(
+    items.filter(item=>
+      item.program===program&&
+      OPEN_STATUSES.has(item.status)
+    )
+  );
 }
 function normalizedVin(value){return upper(value).replace(/\s+/g,"");}
 function headerIndex(header,names,fallback=-1){
@@ -1509,39 +1685,84 @@ function parseComplianceUnitSheet(aoa,program,sheetName,warnings){
   if(!aoa.length)return null;
 
   const header=aoa[0]||[];
-  const vinIndex=headerIndex(header,["VIN"],5);
+  const shopIndex=headerIndex(
+    header,
+    ["GARDA SHOPNAME","SHOPNAME"],
+    2
+  );
+  const vinIndex=headerIndex(
+    header,
+    ["VIN"],
+    program==="ac"?6:5
+  );
   const componentIndex=headerIndex(
     header,
     ["COMPCODE_DESC","COMP CODE DESC"],
-    6
+    program==="ac"?7:6
   );
-  const intervalIndex=headerIndex(header,["INTERVAL"],7);
+  const intervalIndex=headerIndex(
+    header,
+    ["INTERVAL"],
+    program==="ac"?8:7
+  );
   const meterTypeIndex=headerIndex(
     header,
     ["METERTYPE","METER TYPE"],
-    8
+    program==="ac"?9:8
   );
   const dueCategoryIndex=headerIndex(
     header,
     ["DUE CATEGORY"],
-    -1
+    program==="ac"?10:
+      program==="lts"?-1:9
   );
   const duePercentIndex=headerIndex(
     header,
     ["DUEPERCENT","DUE PERCENT"],
-    program==="lts"?10:11
+    program==="ac"?12:
+      program==="lts"?10:11
+  );
+  const lastDoneIndex=headerIndex(
+    header,
+    ["LASTDONE","LAST DONE"],
+    program==="ac"?13:
+      program==="lts"?11:12
+  );
+  const dueDateIndex=headerIndex(
+    header,
+    ["DUEDATE","DUE DATE"],
+    program==="ac"?14:
+      program==="lts"?12:13
   );
 
   const units=new Map();
   let sourceRows=0;
   let blankVinRows=0;
+  let outsideScopeRows=0;
 
   for(let rowIndex=1;rowIndex<aoa.length;rowIndex++){
     const row=aoa[rowIndex]||[];
+    const branchCode=extractBranchCode(
+      row[shopIndex]
+    );
+
+    /*
+      The source tabs define the approved vended-site population.
+      Do not allow out-of-scope source VINs into compliance or gap.
+    */
+    if(!APPROVED_CODES.has(branchCode)){
+      if(row.some(value=>!isBlank(value))){
+        outsideScopeRows++;
+      }
+      continue;
+    }
+
     const vin=normalizedVin(row[vinIndex]);
 
     if(!vin){
-      if(row.some(value=>!isBlank(value)))blankVinRows++;
+      if(row.some(value=>!isBlank(value))){
+        blankVinRows++;
+      }
       continue;
     }
 
@@ -1550,6 +1771,11 @@ function parseComplianceUnitSheet(aoa,program,sheetName,warnings){
     if(!units.has(vin)){
       units.set(vin,{
         vin,
+        branchCode,
+        branchName:
+          BRANCH_BY_CODE.get(branchCode)?.name||
+          clean(row[shopIndex]),
+        shopName:clean(row[shopIndex]),
         rowCount:0,
         overdueRequirements:new Set(),
         comingDueRequirements:new Set(),
@@ -1562,11 +1788,16 @@ function parseComplianceUnitSheet(aoa,program,sheetName,warnings){
     const dueCategory=dueCategoryIndex>=0
       ?upper(row[dueCategoryIndex])
       :"";
-    const duePercent=Number(row[duePercentIndex]);
+    const duePercent=Number(
+      row[duePercentIndex]
+    );
 
     const overdue=
       dueCategory==="OVERDUE"||
-      (Number.isFinite(duePercent)&&duePercent>1);
+      (
+        Number.isFinite(duePercent)&&
+        duePercent>1
+      );
 
     const comingDue=
       dueCategory.includes("COMING")||
@@ -1577,7 +1808,9 @@ function parseComplianceUnitSheet(aoa,program,sheetName,warnings){
       );
 
     const requirement=program==="lts"
-      ?ltsRequirementCategory(row[componentIndex])
+      ?ltsRequirementCategory(
+          row[componentIndex]
+        )
       :program;
 
     unit.rowCount++;
@@ -1586,15 +1819,16 @@ function parseComplianceUnitSheet(aoa,program,sheetName,warnings){
       interval:row[intervalIndex],
       meterType:clean(row[meterTypeIndex]),
       dueCategory,
-      duePercent:Number.isFinite(duePercent)?duePercent:null,
+      duePercent:
+        Number.isFinite(duePercent)
+          ?duePercent
+          :null,
+      lastDone:row[lastDoneIndex],
+      dueDate:row[dueDateIndex],
       overdue,
       comingDue
     });
 
-    /*
-      Duplicate VIN rows use OR logic. A mileage OR frequency interval
-      reaching its threshold controls the VIN.
-    */
     if(overdue){
       unit.overdueRequirements.add(requirement);
       unit.dueRequirements.add(requirement);
@@ -1618,15 +1852,24 @@ function parseComplianceUnitSheet(aoa,program,sheetName,warnings){
   const unmappedOverdueRequirements=new Set();
 
   units.forEach((unit,vin)=>{
-    if(unit.rowCount>1)duplicateVinCount++;
-    if(unit.overdueRequirements.size===0)sourceCompliantUnits++;
+    if(unit.rowCount>1){
+      duplicateVinCount++;
+    }
+
+    if(unit.overdueRequirements.size===0){
+      sourceCompliantUnits++;
+    }
+
     if(
       unit.overdueRequirements.size===0&&
       unit.comingDueRequirements.size>0
     ){
       sourceComingDueUnits++;
     }
-    if(unit.dueRequirements.size>0)sourceAttentionUnits++;
+
+    if(unit.dueRequirements.size>0){
+      sourceAttentionUnits++;
+    }
 
     unit.overdueRequirements.forEach(requirement=>{
       if(requirement.startsWith("unmapped:")){
@@ -1637,17 +1880,28 @@ function parseComplianceUnitSheet(aoa,program,sheetName,warnings){
     });
 
     serializedUnits[vin]={
+      branchCode:unit.branchCode,
+      branchName:unit.branchName,
+      shopName:unit.shopName,
       rowCount:unit.rowCount,
-      overdueRequirements:[...unit.overdueRequirements],
-      comingDueRequirements:[...unit.comingDueRequirements],
-      dueRequirements:[...unit.dueRequirements],
+      overdueRequirements:[
+        ...unit.overdueRequirements
+      ],
+      comingDueRequirements:[
+        ...unit.comingDueRequirements
+      ],
+      dueRequirements:[
+        ...unit.dueRequirements
+      ],
       rows:unit.rows
     };
   });
 
   if(unmappedOverdueRequirements.size){
     warnings.push(
-      `${sheetName}: overdue component description(s) could not be mapped to a VRO task: ${[...unmappedOverdueRequirements].join(", ")}.`
+      `${sheetName}: overdue component description(s) could not be mapped to a VRO task: ${[
+        ...unmappedOverdueRequirements
+      ].join(", ")}.`
     );
   }
 
@@ -1655,26 +1909,110 @@ function parseComplianceUnitSheet(aoa,program,sheetName,warnings){
     sheetName,
     program,
     sourceRows,
+    outsideScopeRows,
     totalUnits:units.size,
     sourceCompliantUnits,
-    sourceNoncompliantUnits:units.size-sourceCompliantUnits,
+    sourceNoncompliantUnits:
+      units.size-sourceCompliantUnits,
     sourceComingDueUnits,
     sourceAttentionUnits,
     duplicateVinCount,
     units:serializedUnits
   };
 }
-function scheduledRequirementsByVin(items){
-  const scheduled=new Map();
+function buildMaintenanceVinScope(complianceSources){
+  const scope=new Map();
+
+  Object.entries(complianceSources||{})
+    .forEach(([program,source])=>{
+      Object.entries(source?.units||{})
+        .forEach(([vin,unit])=>{
+          if(!scope.has(vin)){
+            scope.set(vin,{
+              vin,
+              branchCode:unit.branchCode||"",
+              branchName:unit.branchName||"",
+              shopName:unit.shopName||"",
+              programs:new Set()
+            });
+          }
+
+          scope.get(vin).programs.add(program);
+        });
+    });
+
+  return scope;
+}
+function latestRequirementLastDone(unit,requirement){
+  const dates=(unit?.rows||[])
+    .filter(row=>row.requirement===requirement)
+    .map(row=>parseDate(row.lastDone))
+    .filter(Boolean);
+
+  if(!dates.length)return null;
+
+  return new Date(
+    Math.max(
+      ...dates.map(date=>date.getTime())
+    )
+  );
+}
+function completedAfterSourceLastDone(item,unit,requirement){
+  if(!item?.completed)return false;
+
+  const completedDate=parseDate(
+    item.completedDate
+  );
+  if(!completedDate)return false;
+
+  const lastDone=latestRequirementLastDone(
+    unit,
+    requirement
+  );
+
+  return !lastDone||completedDate>lastDone;
+}
+function qualifyingRequirementItems(items,unit,requirement){
+  return (items||[])
+    .filter(item=>{
+      if(item.program!==requirement){
+        return false;
+      }
+
+      if(item.scheduled){
+        return true;
+      }
+
+      return completedAfterSourceLastDone(
+        item,
+        unit,
+        requirement
+      );
+    });
+}
+function maintenanceRequirementsByVin(items){
+  const grouped=new Map();
+
   items.forEach(item=>{
-    // Unassigned ROs, blank/invalid ECDs, and missing VINs are not scheduled.
-    if(!item.vin||!item.scheduled)return;
-    if(!scheduled.has(item.vin))scheduled.set(item.vin,new Map());
-    const requirements=scheduled.get(item.vin);
-    if(!requirements.has(item.program))requirements.set(item.program,[]);
+    if(!item.vin)return;
+
+    if(!grouped.has(item.vin)){
+      grouped.set(item.vin,new Map());
+    }
+
+    const requirements=grouped.get(item.vin);
+
+    if(!requirements.has(item.program)){
+      requirements.set(item.program,[]);
+    }
+
     requirements.get(item.program).push(item);
   });
-  return scheduled;
+
+  return grouped;
+}
+function scheduledRequirementsByVin(items){
+  return maintenanceRequirementsByVin(items);
 }
 function projectedCompliance(program,currentCompliance,source,maintenanceItems){
   if(!source||!source.totalUnits){
@@ -1705,7 +2043,7 @@ function projectedCompliance(program,currentCompliance,source,maintenanceItems){
     itemsByVin.get(item.vin).push(item);
   });
 
-  const scheduled=scheduledRequirementsByVin(maintenanceItems);
+  const scheduled=maintenanceRequirementsByVin(maintenanceItems);
   const recoveryBuckets=emptyEcd();
 
   let scheduledRecoverableUnits=0;
@@ -1760,17 +2098,25 @@ function projectedCompliance(program,currentCompliance,source,maintenanceItems){
         anyMissingEcd=true;
       }
 
-      const matches=(scheduledForVin?.get(requirement)||[])
+      const matches=qualifyingRequirementItems(
+        scheduledForVin?.get(requirement)||[],
+        unit,
+        requirement
+      )
         .map(item=>({
           item,
-          due:parseDate(item.due)
+          due:item.scheduled
+            ?parseDate(item.due)
+            :parseDate(item.completedDate)
         }))
         .filter(match=>match.due)
         .sort((a,b)=>a.due-b.due);
 
       if(matches.length){
         covered++;
-        requirementCompletionDates.push(matches[0].due);
+        requirementCompletionDates.push(
+          matches[0].due
+        );
       }
     });
 
@@ -2491,8 +2837,57 @@ function parseWorkbook(buffer){
     [5,"VIN"],[6,"COMPCODE_DESC"],[7,"INTERVAL"],[8,"METERTYPE"],[10,"DUEPERCENT"]
   ],ltsSheet.name,warnings);
 
-  const repclassMap=buildRepclassMap(rep.aoa);
-  const vroResult=parseVroRows(vro.aoa,repclassMap,selectedReportDate(),warnings);
+  const complianceSources={
+    ac:acSheet.aoa.length
+      ?parseComplianceUnitSheet(
+          acSheet.aoa,
+          "ac",
+          acSheet.name,
+          warnings
+        )
+      :null,
+    pm:pmSheet.aoa.length
+      ?parseComplianceUnitSheet(
+          pmSheet.aoa,
+          "pm",
+          pmSheet.name,
+          warnings
+        )
+      :null,
+    dot:dotSheet.aoa.length
+      ?parseComplianceUnitSheet(
+          dotSheet.aoa,
+          "dot",
+          dotSheet.name,
+          warnings
+        )
+      :null,
+    lts:ltsSheet.aoa.length
+      ?parseComplianceUnitSheet(
+          ltsSheet.aoa,
+          "lts",
+          ltsSheet.name,
+          warnings
+        )
+      :null
+  };
+
+  const maintenanceVinScope=
+    buildMaintenanceVinScope(
+      complianceSources
+    );
+
+  const repclassMap=
+    buildRepclassMap(rep.aoa);
+
+  const vroResult=parseVroRows(
+    vro.aoa,
+    repclassMap,
+    selectedReportDate(),
+    warnings,
+    maintenanceVinScope
+  );
+
   const usefulCurrent=summarizeUseful(
     usefulRowsByCode(useful.aoa,warnings,useful.name)
   );
@@ -2508,13 +2903,10 @@ function parseWorkbook(buffer){
 
   usefulCurrent.oosUnitIds=oosMovementSource.oosUnitIds;
 
-  const flash=parseGardaFlash(gardaFlash.aoa,warnings);
-  const complianceSources={
-    ac:acSheet.aoa.length?parseComplianceUnitSheet(acSheet.aoa,"ac",acSheet.name,warnings):null,
-    pm:pmSheet.aoa.length?parseComplianceUnitSheet(pmSheet.aoa,"pm",pmSheet.name,warnings):null,
-    dot:dotSheet.aoa.length?parseComplianceUnitSheet(dotSheet.aoa,"dot",dotSheet.name,warnings):null,
-    lts:ltsSheet.aoa.length?parseComplianceUnitSheet(ltsSheet.aoa,"lts",ltsSheet.name,warnings):null
-  };
+  const flash=parseGardaFlash(
+    gardaFlash.aoa,
+    warnings
+  );
 
   const vrOrders=vroResult.orders.filter(order=>order.service==="VENDED REPAIR");
   const maintenance={};
@@ -2548,7 +2940,9 @@ function parseWorkbook(buffer){
       uniqueOpenOrders:vroResult.orders.length,
       uniqueMaintenanceItems:vroResult.maintenanceItems.length,
       duplicateRows:vroResult.duplicateRows,
-      unmappedRows:vroResult.unmapped
+      unmappedRows:vroResult.unmapped,
+      maintenanceRowsMatchedByVin:
+        vroResult.maintenanceRowsMatchedByVin
     },
     vendedRepair:{current:usefulCurrent,prior:usefulPrior},
     vrEcd:summarizeOrders(vrOrders),
@@ -3471,9 +3865,12 @@ function buildEcdDetailRows(detailData){
   });
 
   (detailData?.maintenanceItems||[]).forEach(item=>{
-    const scheduled=
-      item.status!=="UNASSIGNED ROS"&&
-      Boolean(parseDate(item.due));
+    const scheduled=item.scheduled;
+    const schedulingStatus=item.completed
+      ?"Completed"
+      :scheduled
+        ?"Scheduled"
+        :"Not Scheduled";
 
     records.push({
       sortProgram:{
@@ -3491,8 +3888,10 @@ function buildEcdDetailRows(detailData){
         item.vin||"",
         item.order,
         item.status,
-        scheduled?"Scheduled":"Not Scheduled",
-        schedulingReason(item),
+        schedulingStatus,
+        item.completed
+          ?"Completed maintenance order"
+          :schedulingReason(item),
         exportDate(item.due),
         exportDate(item.opened),
         item.customer,
@@ -3525,6 +3924,7 @@ function buildPmNotScheduledRows(detailData){
     "VRO Status(es)",
     "ECD(s)",
     "ECD Bucket(s)",
+    "Completed Date(s)",
     "Task(s)",
     "Source Interval Detail",
     "Source Row Count"
@@ -3550,25 +3950,53 @@ function buildPmNotScheduledRows(detailData){
     if(!dueRequirements.length)return;
 
     const items=itemsByVin.get(vin)||[];
-    const scheduledItems=items.filter(item=>
-      item.status!=="UNASSIGNED ROS"&&
-      Boolean(parseDate(item.due))
-    );
+    const qualifyingItems=
+      qualifyingRequirementItems(
+        items,
+        unit,
+        "pm"
+      );
 
-    if(scheduledItems.length)return;
+    if(qualifyingItems.length)return;
 
     const reasons=[];
+
     if(!items.length){
       reasons.push("No PM VRO");
     }else{
-      if(items.some(item=>item.status==="UNASSIGNED ROS")){
+      if(items.some(
+        item=>item.status==="UNASSIGNED ROS"
+      )){
         reasons.push("Unassigned ROs");
       }
-      if(items.some(item=>!parseDate(item.due))){
+
+      if(items.some(
+        item=>
+          OPEN_STATUSES.has(item.status)&&
+          item.status!=="UNASSIGNED ROS"&&
+          !parseDate(item.due)
+      )){
         reasons.push("Missing ECD");
       }
+
+      if(items.some(
+        item=>
+          item.completed&&
+          !completedAfterSourceLastDone(
+            item,
+            unit,
+            "pm"
+          )
+      )){
+        reasons.push(
+          "Historical PM completion already reflected"
+        );
+      }
     }
-    if(!reasons.length)reasons.push("Not Fully Scheduled");
+
+    if(!reasons.length){
+      reasons.push("Not Fully Scheduled");
+    }
 
     const sourceStatus=overdue.length
       ?"Overdue"
@@ -3596,7 +4024,14 @@ function buildPmNotScheduledRows(detailData){
       uniqueText(items.map(item=>item.order)),
       uniqueText(items.map(item=>item.status)),
       uniqueText(items.map(item=>dateText(item.due))),
-      uniqueText(items.map(item=>EXPORT_BUCKET_LABELS[item.bucket]||item.bucket)),
+      uniqueText(items.map(
+        item=>
+          EXPORT_BUCKET_LABELS[item.bucket]||
+          item.bucket
+      )),
+      uniqueText(items.map(
+        item=>dateText(item.completedDate)
+      )),
       uniqueText(items.map(item=>item.task)),
       intervalDetail,
       unit.rowCount||0
@@ -4057,7 +4492,7 @@ function exportAllTables(){
     wb,
     makeDetailSheet(
       pmNotScheduledRows,
-      [20,16,24,22,24,25,22,26,24,58,48,16]
+      [20,16,24,22,24,25,22,26,24,22,58,48,16]
     ),
     "PM Not Scheduled"
   );
