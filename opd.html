@@ -1179,7 +1179,7 @@
             <section class="opd-card maintenance opd-full">
               <div class="opd-table-wrap">
                 <table class="opd-table" id="maintenance-table">
-                  <thead><tr><th class="table-title-col">Vended Maintenance</th><th class="value-col">Prior Day</th><th class="value-col">Current Day</th><th class="value-col">Delta</th><th class="wide-col">Achievable Compliance</th><th class="wide-col">Scheduling Gap</th></tr></thead>
+                  <thead><tr><th class="table-title-col">Vended Maintenance</th><th class="value-col">Prior Day</th><th class="value-col">Current Day</th><th class="value-col">Delta</th><th class="wide-col"># Overdue Not Scheduled</th><th class="wide-col">Scheduling Gap</th></tr></thead>
                   <tbody id="maintenance-body"></tbody>
                 </table>
               </div>
@@ -1204,7 +1204,7 @@
             </section>
           </div>
 
-          <div class="opd-footer"><strong>Workbook-derived:</strong> A single open order may count separately under PM, DOT, A/C, and LTS. ANNUAL INSPECTION routes to DOT and GARDA AC CHECK routes to A/C whenever those phrases appear anywhere inside the combined VRO task text, regardless of the order’s REPCLASS. PM remains driven by a PM REPCLASS and counts approved PM task names or other remaining PM-repclass task content after the separate DOT, A/C, LTS, and coolant phrases are removed. Repeated task phrases on one order are deduplicated by unique Order + program. All PM-related compliance calculations use Garda's formula: 1 - (distinct overdue VINs / total active VINs). Achievable Compliance removes unique overdue VINs only when every required task is on a non-unassigned VRO with a valid ECD. When GARDA FLASH and the source tabs are on different refresh cycles, Achievable Compliance will not be shown below the Current Day compliance reported in GARDA FLASH. Scheduling Gap is calculated separately as unscheduled unique overdue VINs divided by total active VINs. Coming-due VINs stay in the detailed scheduling report but do not reduce compliance or Scheduling Gap until they become overdue. Duplicate VIN interval rows use OR logic: if mileage or time/frequency reaches the threshold, the VIN is controlled by that requirement. OOS movement is calculated from the unique Unit # values marked OOS on the OOS GARDA tab for the approved 67 branches. Vehicles Returned to Service and New Units OOS are calculated for both days. Current Day compares today's OOS unit list to the prior snapshot; Prior Day compares the prior snapshot to the snapshot before it. Delta is Current Day minus Prior Day. Maintenance VRO matching is performed by normalized VIN across all orders. The PM, DOT, AC, and LTS source tabs establish the approved 67-site VIN population, so a VRO is not discarded when its customer branch code is different, malformed, or blank. PM is recognized from a PM REPCLASS or approved PM task text; ANNUAL INSPECTION, GARDA AC CHECK, and GARDA LTS SYSTEM CHECK are recognized anywhere in combined task text. Completed or Final Charges Submitted work counts only when its completion date is later than the requirement's LASTDONE date on the source tab.</div>
+          <div class="opd-footer"><strong>Workbook-derived:</strong> A single open order may count separately under PM, DOT, A/C, and LTS. ANNUAL INSPECTION routes to DOT and GARDA AC CHECK routes to A/C whenever those phrases appear anywhere inside the combined VRO task text, regardless of the order’s REPCLASS. PM remains driven by a PM REPCLASS and counts approved PM task names or other remaining PM-repclass task content after the separate DOT, A/C, LTS, and coolant phrases are removed. Repeated task phrases on one order are deduplicated by unique Order + program. All PM-related compliance calculations use Garda's formula: 1 - (distinct overdue VINs / total active VINs). # Overdue Not Scheduled is the hard count of unique overdue VINs that do not yet have every required PM or inspection fully scheduled. That includes VINs with no matching VRO, VROs still in Unassigned ROs, missing ECDs, or only part of the overdue work scheduled. Scheduling Gap is that same count divided by total active VINs. Coming-due VINs stay in the detailed scheduling report but do not reduce compliance or Scheduling Gap until they become overdue. Duplicate VIN interval rows use OR logic: if mileage or time/frequency reaches the threshold, the VIN is controlled by that requirement. OOS movement is calculated from the unique Unit # values marked OOS on the OOS GARDA tab for the approved 67 branches. Vehicles Returned to Service and New Units OOS are calculated for both days. Current Day compares today's OOS unit list to the prior snapshot; Prior Day compares the prior snapshot to the snapshot before it. Delta is Current Day minus Prior Day. Maintenance VRO matching is performed by normalized VIN across all orders. The PM, DOT, AC, and LTS source tabs establish the approved 67-site VIN population, so a VRO is not discarded when its customer branch code is different, malformed, or blank. PM is recognized from a PM REPCLASS or approved PM task text; ANNUAL INSPECTION, GARDA AC CHECK, and GARDA LTS SYSTEM CHECK are recognized anywhere in combined task text. Completed or Final Charges Submitted work counts only when its completion date is later than the requirement's LASTDONE date on the source tab.</div>
         </div>
       </div>
     </section>
@@ -3178,6 +3178,26 @@ function renderVendedRepair(){
   $("#vended-repair-body").innerHTML=rows;
 }
 function renderVrEcd(){$("#vr-ecd-body").innerHTML=ECD_ROWS.map(r=>`<tr><td class="label">${r.label}</td>${cell(dashboardData.vrEcd[r.key],"number",true)}</tr>`).join("");}
+function overdueNotScheduledCell(projection){
+  if(!projection){
+    return cell(null,"number");
+  }
+
+  const value=projection.unscheduledOverdueUnits;
+  const title=[
+    `Unique overdue VINs that are not fully scheduled.`,
+    `${projection.noVroOverdueUnits} have no matching VRO.`,
+    `${projection.unassignedOverdueUnits} remain in Unassigned ROs.`,
+    `${projection.missingEcdOverdueUnits} have an active VRO without a valid ECD.`,
+    `${projection.partiallyScheduledOverdueUnits} have only part of the overdue work scheduled.`,
+    `Completed or Final Charges Submitted work is excluded from active ECD buckets but may satisfy the requirement when completed after the source LASTDONE date.`
+  ].join(" ");
+
+  return `<td class="num ${isBlank(value)?"empty":""}" title="${escapeHtml(title)}">
+    <strong>${formatValue(value,"number")}</strong>
+    <span class="cell-note">PMs/inspections to schedule</span>
+  </td>`;
+}
 function projectionCell(value,projection,kind){
   if(!projection)return cell(value,"percent");
 
@@ -3281,10 +3301,8 @@ function renderMaintenance(){
         metric.compliance,
         "percent"
       )}
-      ${projectionCell(
-        metric.achievable,
-        metric.projection,
-        "achievable"
+      ${overdueNotScheduledCell(
+        metric.projection
       )}
       ${projectionCell(
         metric.gap,
@@ -3302,7 +3320,7 @@ function renderMaintenance(){
         ${cell(prior)}
         ${maintenanceEcdCell(current,metric,row.key)}
         ${deltaCell(prior,current)}
-        ${bucketAchievableCell(metric,row.key)}
+        <td class="maintenance-filler" title="Program-level metric"></td>
         <td class="maintenance-filler" title="Program-level metric"></td>
       </tr>`;
     }).join("");
@@ -4233,7 +4251,7 @@ function exportAllTables(){
   const ecdTypes=ECD_ROWS.map((_,index)=>[index+1,"number",1,1]);
 
   // Vended Maintenance
-  const maintRows=[["Vended Maintenance","Prior Day","Current Day","Delta","Achievable Compliance","Scheduling Gap"]];
+  const maintRows=[["Vended Maintenance","Prior Day","Current Day","Delta","# Overdue Not Scheduled","Scheduling Gap"]];
   const maintTypes=[];
   const maintFillerCells=[];
   PROGRAMS.forEach(program=>{
@@ -4250,10 +4268,16 @@ function exportAllTables(){
         metric.compliance,
         "percent"
       ),
-      excelValue(metric.achievable,"percent"),
+      excelValue(
+        metric.projection?.unscheduledOverdueUnits,
+        "number"
+      ),
       excelValue(metric.gap,"percent")
     ]);
-    maintTypes.push([rowIndex,"percent",1,5]);
+
+    maintTypes.push([rowIndex,"percent",1,3]);
+    maintTypes.push([rowIndex,"number",4,4]);
+    maintTypes.push([rowIndex,"percent",5,5]);
 
     MAINTENANCE_ECD_ROWS.forEach(ecd=>{
       rowIndex=maintRows.length;
@@ -4262,23 +4286,14 @@ function exportAllTables(){
         excelValue(metric.priorEcd?.[ecd.key]),
         excelValue(metric.ecd[ecd.key]),
         excelDelta(metric.priorEcd?.[ecd.key],metric.ecd[ecd.key]),
-        ecd.key==="missing"
-          ?null
-          :excelValue(
-              metric.projection?.bucketAchievable?.[ecd.key],
-              "percent"
-            ),
+        null,
         null
       ]);
+
       maintTypes.push([rowIndex,"number",1,3]);
 
-      if(ecd.key!=="missing"){
-        maintTypes.push([rowIndex,"percent",4,4]);
-      }else{
-        maintFillerCells.push([rowIndex,4]);
-      }
-
-      // Scheduling Gap is a program-level metric only.
+      // Both summary metrics are program-level only.
+      maintFillerCells.push([rowIndex,4]);
       maintFillerCells.push([rowIndex,5]);
     });
   });
