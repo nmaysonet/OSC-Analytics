@@ -469,6 +469,16 @@
       )!important;
     }
 
+    .report-table .total-row td,
+    .report-table .grand-total td {
+      background-image:none!important;
+      color:inherit;
+    }
+
+    .report-table .grand-total td {
+      color:#fff!important;
+    }
+
     .num { text-align:right!important; }
 
     .config-toolbar {
@@ -2156,8 +2166,8 @@
       const metrics = segmentMetrics(label, rows, true);
 
       /*
-        Detail total rows follow the sample format: counts remain blank and
-        financial/demand totals begin in the fourth column.
+        Total rows remain solid and unhatched. Counts are intentionally blank,
+        while demand and financial totals begin in the fourth column.
       */
       metrics.uniqueCustomersOrService = "";
       metrics.combinationsOrStatus = "";
@@ -2165,7 +2175,7 @@
       return `
         <tr class="${grand ? "grand-total" : "total-row"}">
           ${REPORT_COLUMNS.map(column => `
-            <td class="${reportCellClass(metrics[column.key], column.type)}">
+            <td class="${column.type ? "num" : ""}">
               ${reportFormatValue(metrics[column.key], column.type)}
             </td>
           `).join("")}
