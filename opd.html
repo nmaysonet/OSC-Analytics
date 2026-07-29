@@ -1239,6 +1239,8 @@ const ECD_SLIPPAGE_TRACKER_ROOT=
   "operationalPerformanceTables/ecdSlippageTracker";
 const ECD_SLIPPAGE_LOG_ROOT=
   "operationalPerformanceTables/ecdSlippageLog";
+const ECD_SLIPPAGE_METRICS_ROOT=
+  "operationalPerformanceTables/ecdSlippageMetrics";
 const OPEN_STATUSES=new Set(["UNASSIGNED ROS","ESTIMATES","PENDING ESTIMATES","WORK IN PROGRESS"]);
 const COMPLETED_STATUSES=new Set(["COMPLETED","FINAL CHARGES SUBMITTED"]);
 const MAINTENANCE_STATUSES=new Set([
@@ -3967,10 +3969,8 @@ function makeDetailSheet(rows,widths,dateColumns=[]){
         fill:{
           fgColor:{
             rgb:header
-              ?"1F4E78"
-              :alternate
-                ?"F7F9FB"
-                :"FFFFFF"
+              ?"0B1F3A"
+              :"FFFFFF"
           }
         },
         alignment:{
@@ -4543,9 +4543,11 @@ async function exportGardaTables(){
 
   const [
     slippageHistory,
+    slippageMetricsHistory,
     trendHistory
   ]=await Promise.all([
     loadEcdSlippageHistory(),
+    loadEcdSlippageMetricsHistory(),
     loadMaintenanceTrendHistory()
   ]);
 
@@ -4929,8 +4931,9 @@ async function exportGardaTables(){
     "OOS Movement"
   );
 
-  appendEcdSlippageSheet(
+  appendEcdSlippageSheets(
     wb,
+    slippageMetricsHistory,
     slippageHistory
   );
 
@@ -5956,110 +5959,130 @@ function storagePathCandidates(path){
 
   return [...new Set(candidates)];
 }
-async function fetchStorageBuffer(path){
-  const configured=
-    firebase.app().options.storageBucket||"";
-  const buckets=[
-    ...new Set(
-      [
-        configured,
-        "workflow-dashboard-e6134.firebasestorage.app",
-        "workflow-dashboard-e6134.appspot.com"
-      ].filter(Boolean)
-    )
-  ];
+function promiseWithTimeout(
+  promise,
+  milliseconds,
+  label
+){
+  let timeoutId=null;
 
-  let lastError=null;
+  const timeoutPromise=new Promise(
+    (_,reject)=>{
+      timeoutId=setTimeout(
+        ()=>{
+          reject(
+            new Error(
+              `${label} timed out after ${Math.round(milliseconds/1000)} seconds`
+            )
+          );
+        },
+        milliseconds
+      );
+    }
+  );
 
-  async function fetchUrl(url){
-    const controller=new AbortController();
-    const timer=setTimeout(
-      ()=>controller.abort(),
-      30000
+  return Promise.race([
+    promise,
+    timeoutPromise
+  ]).finally(()=>{
+    if(timeoutId){
+      clearTimeout(timeoutId);
+    }
+  });
+}
+async function downloadStorageUrl(
+  url,
+  path
+){
+  const controller=new AbortController();
+  const timeoutId=setTimeout(
+    ()=>controller.abort(),
+    45000
+  );
+
+  try{
+    const response=await fetch(
+      url+
+        (url.includes("?")?"&":"?")+
+        `_=${Date.now()}`,
+      {
+        cache:"no-store",
+        signal:controller.signal
+      }
     );
 
+    if(!response.ok){
+      throw new Error(
+        `${path}: HTTP ${response.status}`
+      );
+    }
+
+    const data=await response.arrayBuffer();
+    const signature=new Uint8Array(
+      data.slice(0,2)
+    );
+
+    if(
+      data.byteLength<4||
+      signature[0]!==0x50||
+      signature[1]!==0x4b
+    ){
+      throw new Error(
+        `${path}: Firebase response is not a valid XLSX workbook`
+      );
+    }
+
+    return data;
+  }catch(error){
+    if(error?.name==="AbortError"){
+      throw new Error(
+        `${path}: workbook download timed out after 45 seconds`
+      );
+    }
+
+    throw error;
+  }finally{
+    clearTimeout(timeoutId);
+  }
+}
+async function fetchStorageBuffer(path){
+  const candidates=
+    storagePathCandidates(path);
+  const errors=[];
+
+  for(const candidatePath of candidates){
     try{
-      const response=await fetch(
-        url+
-          (url.includes("?")?"&":"?")+
-          `_=${Date.now()}`,
-        {
-          cache:"no-store",
-          signal:controller.signal
-        }
+      const reference=firebase.storage()
+        .ref()
+        .child(candidatePath);
+
+      const url=await promiseWithTimeout(
+        reference.getDownloadURL(),
+        15000,
+        `${candidatePath}: Firebase download URL`
       );
 
-      if(!response.ok){
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const data=await response.arrayBuffer();
-      const signature=new Uint8Array(
-        data.slice(0,2)
+      const buffer=await downloadStorageUrl(
+        url,
+        candidatePath
       );
 
-      if(
-        data.byteLength<4||
-        signature[0]!==0x50||
-        signature[1]!==0x4b
-      ){
-        throw new Error(
-          "Response is not a valid XLSX file"
+      if(candidatePath!==path){
+        console.info(
+          `Loaded ${candidatePath} as the fallback for ${path}.`
         );
       }
 
-      return data;
-    }finally{
-      clearTimeout(timer);
+      return buffer;
+    }catch(error){
+      errors.push(
+        `${candidatePath}: ${error?.message||String(error)}`
+      );
     }
-  }
-
-  const pathCandidates=
-    storagePathCandidates(path);
-
-  for(let attempt=1;attempt<=2;attempt++){
-    for(const candidatePath of pathCandidates){
-      for(const bucket of buckets){
-        try{
-          const reference=
-            bucket===configured
-              ?firebase.storage()
-                  .ref()
-                  .child(candidatePath)
-              :firebase.storage()
-                  .refFromURL(
-                    `gs://${bucket}/${candidatePath}`
-                  );
-
-          const url=
-            await reference.getDownloadURL();
-
-          const buffer=await fetchUrl(url);
-
-          if(candidatePath!==path){
-            console.info(
-              `Loaded ${candidatePath} as the fallback for ${path}.`
-            );
-          }
-
-          return buffer;
-        }catch(error){
-          lastError=error;
-          console.warn(
-            `Storage fetch attempt ${attempt} failed for ${candidatePath} in ${bucket}`,
-            error
-          );
-        }
-      }
-    }
-
-    await new Promise(resolve=>
-      setTimeout(resolve,750)
-    );
   }
 
   throw new Error(
-    `${path}: none of these Firebase Storage filenames could be loaded: ${pathCandidates.join(", ")}. ${lastError?.message||"Unknown Firebase Storage error"}`
+    `${path} could not be loaded. ${errors.join(" | ")}`
   );
 }
 async function loadPriorSnapshots(dateKey){
@@ -6290,6 +6313,279 @@ function activeEcdTrackingItems(data){
 
   return items;
 }
+function emptySlippageGroup(){
+  return {
+    cohortCount:0,
+    slippedCount:0,
+    bucketMovementCount:0,
+    ecdExtensionCount:0,
+    crossedPastDueCount:0,
+    currentPastDueCount:0,
+    completedOrRemovedCount:0
+  };
+}
+function finalizeSlippageGroup(group){
+  const denominator=
+    Number(group?.cohortCount||0);
+
+  return {
+    ...group,
+    slippagePercent:
+      denominator
+        ?Number(group.slippedCount||0)/
+          denominator
+        :null,
+    bucketMovementPercent:
+      denominator
+        ?Number(
+            group.bucketMovementCount||0
+          )/denominator
+        :null,
+    ecdExtensionPercent:
+      denominator
+        ?Number(
+            group.ecdExtensionCount||0
+          )/denominator
+        :null,
+    crossedPastDuePercent:
+      denominator
+        ?Number(
+            group.crossedPastDueCount||0
+          )/denominator
+        :null,
+    currentPastDuePercent:
+      denominator
+        ?Number(
+            group.currentPastDueCount||0
+          )/denominator
+        :null
+  };
+}
+function latestPriorTrackerDate(
+  trackers,
+  reportDateKey
+){
+  const dates=Object.values(trackers||{})
+    .map(tracker=>tracker?.lastObservedDate)
+    .filter(dateKey=>
+      dateKey&&
+      dateKey<reportDateKey
+    )
+    .sort();
+
+  return dates.length
+    ?dates[dates.length-1]
+    :null;
+}
+function buildDailySlippageMetrics(
+  existingTrackers,
+  currentItems,
+  existingDaily,
+  reportDateKey
+){
+  let baselineDate=
+    existingDaily?.summary?.baselineDate||
+    null;
+  let cohort=
+    existingDaily?.cohort||
+    null;
+
+  if(!cohort){
+    baselineDate=latestPriorTrackerDate(
+      existingTrackers,
+      reportDateKey
+    );
+    cohort={};
+
+    if(baselineDate){
+      Object.entries(existingTrackers||{})
+        .forEach(([trackerKey,tracker])=>{
+          if(
+            tracker?.lastObservedDate!==
+              baselineDate||
+            !tracker?.lastEcd||
+            !tracker?.lastBucket
+          ){
+            return;
+          }
+
+          cohort[trackerKey]={
+            program:tracker.program||"",
+            programLabel:
+              tracker.programLabel||
+              programDisplayLabel(
+                tracker.program
+              ),
+            vin:tracker.vin||"",
+            order:tracker.order||"",
+            status:tracker.status||"",
+            customer:tracker.customer||"",
+            branch:tracker.branch||"",
+            task:tracker.task||"",
+            priorEcd:tracker.lastEcd,
+            priorBucket:tracker.lastBucket,
+            priorBucketEnteredDate:
+              tracker.bucketEnteredDate||
+              tracker.firstSeenDate||
+              baselineDate
+          };
+        });
+    }
+  }
+
+  const overall=emptySlippageGroup();
+  const byProgram={};
+  const byStartingBucket={};
+
+  function groupFor(container,key){
+    if(!container[key]){
+      container[key]=emptySlippageGroup();
+    }
+
+    return container[key];
+  }
+
+  function incrementGroup(
+    group,
+    result
+  ){
+    group.cohortCount++;
+
+    if(result.completedOrRemoved){
+      group.completedOrRemovedCount++;
+      return;
+    }
+
+    if(result.slipped){
+      group.slippedCount++;
+    }
+    if(result.bucketMovement){
+      group.bucketMovementCount++;
+    }
+    if(result.ecdExtended){
+      group.ecdExtensionCount++;
+    }
+    if(result.crossedPastDue){
+      group.crossedPastDueCount++;
+    }
+    if(result.currentPastDue){
+      group.currentPastDueCount++;
+    }
+  }
+
+  Object.entries(cohort||{})
+    .forEach(([trackerKey,baseline])=>{
+      const current=
+        currentItems.get(trackerKey)||
+        null;
+      const result={
+        completedOrRemoved:!current,
+        slipped:false,
+        bucketMovement:false,
+        ecdExtended:false,
+        crossedPastDue:false,
+        currentPastDue:false
+      };
+
+      if(current){
+        result.ecdExtended=
+          Boolean(baseline.priorEcd)&&
+          current.currentEcd>
+            baseline.priorEcd;
+
+        result.bucketMovement=
+          Boolean(
+            baseline.priorBucket
+          )&&
+          ecdBucketRank(
+            current.currentBucket
+          )<
+          ecdBucketRank(
+            baseline.priorBucket
+          );
+
+        result.crossedPastDue=
+          current.currentBucket==="pastDue"&&
+          baseline.priorBucket!=="pastDue";
+
+        result.currentPastDue=
+          current.currentBucket==="pastDue";
+
+        /*
+          Daily slippage includes any prior-cohort item that:
+          - moved into a tighter/worse bucket,
+          - had its ECD extended, or
+          - remains or becomes past due.
+        */
+        result.slipped=
+          result.bucketMovement||
+          result.ecdExtended||
+          result.currentPastDue;
+      }
+
+      incrementGroup(overall,result);
+
+      const programKey=
+        baseline.program||
+        "unassigned";
+      incrementGroup(
+        groupFor(byProgram,programKey),
+        result
+      );
+
+      const startingBucket=
+        baseline.priorBucket||
+        "unknown";
+      incrementGroup(
+        groupFor(
+          byStartingBucket,
+          startingBucket
+        ),
+        result
+      );
+    });
+
+  const currentOpenCount=
+    currentItems.size;
+  let currentPastDueOpenCount=0;
+
+  currentItems.forEach(item=>{
+    if(item.currentBucket==="pastDue"){
+      currentPastDueOpenCount++;
+    }
+  });
+
+  return {
+    cohort,
+    summary:{
+      reportDate:reportDateKey,
+      baselineDate,
+      updatedAt:new Date().toISOString(),
+      ...finalizeSlippageGroup(overall),
+      currentOpenCount,
+      currentPastDueOpenCount,
+      currentPastDueOpenPercent:
+        currentOpenCount
+          ?currentPastDueOpenCount/
+            currentOpenCount
+          :null,
+      byProgram:Object.fromEntries(
+        Object.entries(byProgram)
+          .map(([key,value])=>[
+            key,
+            finalizeSlippageGroup(value)
+          ])
+      ),
+      byStartingBucket:Object.fromEntries(
+        Object.entries(byStartingBucket)
+          .map(([key,value])=>[
+            key,
+            finalizeSlippageGroup(value)
+          ])
+      )
+    }
+  };
+}
 async function logEcdSlippage(data){
   if(
     !db||
@@ -6299,41 +6595,91 @@ async function logEcdSlippage(data){
     return;
   }
 
-  const reportDateKey=$("#report-date").value;
-  const reportDate=dateFromKey(reportDateKey);
+  const reportDateKey=
+    $("#report-date").value;
+  const reportDate=
+    dateFromKey(reportDateKey);
   const customerTrackerRoot=
     `${ECD_SLIPPAGE_TRACKER_ROOT}/${activeCustomerKey}`;
   const customerLogRoot=
     `${ECD_SLIPPAGE_LOG_ROOT}/${activeCustomerKey}`;
+  const customerMetricsRoot=
+    `${ECD_SLIPPAGE_METRICS_ROOT}/${activeCustomerKey}`;
 
   try{
-    const trackerSnapshot=await db
-      .ref(customerTrackerRoot)
-      .once("value");
+    const [
+      trackerSnapshot,
+      dailyMetricsSnapshot
+    ]=await Promise.all([
+      db.ref(customerTrackerRoot)
+        .once("value"),
+      db.ref(
+        `${customerMetricsRoot}/${reportDateKey}`
+      ).once("value")
+    ]);
 
     const existingTrackers=
       trackerSnapshot.val()||{};
+    const existingDaily=
+      dailyMetricsSnapshot.val()||{};
     const updates={};
+    const currentItems=new Map();
 
     activeEcdTrackingItems(data)
       .forEach(item=>{
         const trackerKey=safeFirebaseKey(
           item.trackerKey
         );
-        const currentEcdDate=parseDate(item.ecd);
+        const currentEcdDate=
+          parseDate(item.ecd);
 
         if(!currentEcdDate){
           return;
         }
 
-        const currentEcd=
-          localDateKey(currentEcdDate);
-        const currentBucket=ecdBucket(
-          currentEcdDate,
-          reportDate
+        currentItems.set(
+          trackerKey,
+          {
+            ...item,
+            trackerKey,
+            currentEcd:
+              localDateKey(currentEcdDate),
+            currentBucket:
+              ecdBucket(
+                currentEcdDate,
+                reportDate
+              )
+          }
         );
+      });
+
+    const dailyMetrics=
+      buildDailySlippageMetrics(
+        existingTrackers,
+        currentItems,
+        existingDaily,
+        reportDateKey
+      );
+
+    updates[
+      `${customerMetricsRoot}/${reportDateKey}/summary`
+    ]=dailyMetrics.summary;
+
+    if(!existingDaily.cohort){
+      updates[
+        `${customerMetricsRoot}/${reportDateKey}/cohort`
+      ]=dailyMetrics.cohort;
+    }
+
+    currentItems.forEach(
+      (current,trackerKey)=>{
+        const currentEcd=
+          current.currentEcd;
+        const currentBucket=
+          current.currentBucket;
         const prior=
-          existingTrackers[trackerKey]||null;
+          existingTrackers[trackerKey]||
+          null;
 
         const firstSeenDate=
           prior?.firstSeenDate||
@@ -6426,19 +6772,22 @@ async function logEcdSlippage(data){
             ?priorBucketEnteredDate
             :reportDateKey;
 
-        const trackerRecord={
+        updates[
+          `${customerTrackerRoot}/${trackerKey}`
+        ]={
           customerKey:activeCustomerKey,
           customerLabel:
             activeCustomerProfile?.label||
             activeCustomerKey,
-          program:item.program,
-          programLabel:item.programLabel,
-          vin:item.vin,
-          order:item.order,
-          status:item.status,
-          customer:item.customer,
-          branch:item.branch,
-          task:item.task,
+          program:current.program,
+          programLabel:
+            current.programLabel,
+          vin:current.vin,
+          order:current.order,
+          status:current.status,
+          customer:current.customer,
+          branch:current.branch,
+          task:current.task,
           firstSeenDate,
           originalEcd,
           originalBucket,
@@ -6451,10 +6800,6 @@ async function logEcdSlippage(data){
           totalExtensionDays,
           daysPastDue
         };
-
-        updates[
-          `${customerTrackerRoot}/${trackerKey}`
-        ]=trackerRecord;
 
         if(eventTypes.length){
           const slippageDays=Math.max(
@@ -6473,14 +6818,15 @@ async function logEcdSlippage(data){
             customerLabel:
               activeCustomerProfile?.label||
               activeCustomerKey,
-            program:item.program,
-            programLabel:item.programLabel,
-            vin:item.vin,
-            order:item.order,
-            status:item.status,
-            customer:item.customer,
-            branch:item.branch,
-            task:item.task,
+            program:current.program,
+            programLabel:
+              current.programLabel,
+            vin:current.vin,
+            order:current.order,
+            status:current.status,
+            customer:current.customer,
+            branch:current.branch,
+            task:current.task,
             eventType:eventTypes.join("; "),
             firstSeenDate,
             originalEcd,
@@ -6497,7 +6843,8 @@ async function logEcdSlippage(data){
             slippageDays
           };
         }
-      });
+      }
+    );
 
     if(Object.keys(updates).length){
       await db.ref().update(updates);
@@ -6551,6 +6898,39 @@ async function loadEcdSlippageHistory(
     return [];
   }
 }
+async function loadEcdSlippageMetricsHistory(
+  maximumDateNodes=180
+){
+  if(!db||!activeCustomerKey){
+    return [];
+  }
+
+  try{
+    const snapshot=await db
+      .ref(
+        `${ECD_SLIPPAGE_METRICS_ROOT}/${activeCustomerKey}`
+      )
+      .orderByKey()
+      .limitToLast(maximumDateNodes)
+      .once("value");
+
+    const values=snapshot.val()||{};
+
+    return Object.keys(values)
+      .sort()
+      .map(dateKey=>({
+        reportDate:dateKey,
+        ...(values[dateKey]?.summary||{})
+      }));
+  }catch(error){
+    console.warn(
+      "ECD slippage metrics history unavailable",
+      error
+    );
+    return [];
+  }
+}
+
 async function loadMaintenanceTrendHistory(
   maximumPoints=60
 ){
@@ -6726,23 +7106,131 @@ function buildEcdSlippageRows(events){
 
   return [headers,...rows];
 }
-function appendEcdSlippageSheet(
+function buildEcdSlippageSummaryRows(
+  metricsHistory
+){
+  const headers=[
+    "Report Date",
+    "Baseline Cohort Date",
+    "Prior Open ECDs",
+    "Slipped ECDs",
+    "Daily Slippage %",
+    "Bucket Movement Count",
+    "Bucket Movement %",
+    "ECD Extension Count",
+    "ECD Extension %",
+    "Crossed Past Due Count",
+    "Crossed Past Due %",
+    "Past Due in Prior Cohort",
+    "Past Due Cohort %",
+    "Completed / Removed",
+    "Current Open ECDs",
+    "Current Past Due Open",
+    "Current Past Due Open %"
+  ];
+
+  const rows=(metricsHistory||[])
+    .map(metric=>[
+      metric.reportDate||"",
+      metric.baselineDate||"",
+      Number(metric.cohortCount||0),
+      Number(metric.slippedCount||0),
+      metric.slippagePercent??null,
+      Number(
+        metric.bucketMovementCount||0
+      ),
+      metric.bucketMovementPercent??null,
+      Number(
+        metric.ecdExtensionCount||0
+      ),
+      metric.ecdExtensionPercent??null,
+      Number(
+        metric.crossedPastDueCount||0
+      ),
+      metric.crossedPastDuePercent??null,
+      Number(
+        metric.currentPastDueCount||0
+      ),
+      metric.currentPastDuePercent??null,
+      Number(
+        metric.completedOrRemovedCount||0
+      ),
+      Number(metric.currentOpenCount||0),
+      Number(
+        metric.currentPastDueOpenCount||0
+      ),
+      metric.currentPastDueOpenPercent??null
+    ]);
+
+  return [headers,...rows];
+}
+function makeSlippageSummarySheet(
+  metricsHistory
+){
+  const rows=
+    buildEcdSlippageSummaryRows(
+      metricsHistory
+    );
+  const worksheet=makeDetailSheet(
+    rows,
+    [
+      14,20,16,16,18,20,20,20,18,
+      22,20,24,20,20,18,24,24
+    ]
+  );
+
+  const percentColumns=
+    [4,6,8,10,12,16];
+  const range=XLSX.utils.decode_range(
+    worksheet["!ref"]||"A1:A1"
+  );
+
+  for(
+    let row=1;
+    row<=range.e.r;
+    row++
+  ){
+    percentColumns.forEach(column=>{
+      const ref=XLSX.utils.encode_cell({
+        r:row,
+        c:column
+      });
+
+      if(
+        worksheet[ref]&&
+        typeof worksheet[ref].v==="number"
+      ){
+        worksheet[ref].z="0.0%";
+      }
+    });
+  }
+
+  return worksheet;
+}
+function appendEcdSlippageSheets(
   workbook,
+  metricsHistory,
   events
 ){
-  const rows=buildEcdSlippageRows(events);
+  XLSX.utils.book_append_sheet(
+    workbook,
+    makeSlippageSummarySheet(
+      metricsHistory
+    ),
+    "ECD Slippage"
+  );
 
   XLSX.utils.book_append_sheet(
     workbook,
     makeDetailSheet(
-      rows,
+      buildEcdSlippageRows(events),
       [
         14,18,28,20,20,22,32,
         14,14,14,14,20,20,20,
         18,20,20,16,16,32,64
       ]
     ),
-    "ECD Slippage"
+    "ECD Slippage Detail"
   );
 }
 function trendHeaders(){
@@ -6787,7 +7275,7 @@ function appendMaintenanceTrendSheet(
     "Line charts use the daily Firebase Realtime Database snapshots for the selected customer."
   ];
   const chartSpace=Array.from(
-    {length:66},
+    {length:84},
     ()=>[]
   );
   const rows=[
@@ -6801,7 +7289,7 @@ function appendMaintenanceTrendSheet(
   const worksheet=
     XLSX.utils.aoa_to_sheet(rows);
 
-  const headerRowIndex=68;
+  const headerRowIndex=86;
   const range=XLSX.utils.decode_range(
     worksheet["!ref"]||"A1:A1"
   );
@@ -6817,7 +7305,7 @@ function appendMaintenanceTrendSheet(
       name:"Raleway",
       sz:16,
       bold:true,
-      color:{rgb:"1F2937"}
+      color:{rgb:"0B1F3A"}
     },
     alignment:{
       horizontal:"left",
@@ -6857,10 +7345,10 @@ function appendMaintenanceTrendSheet(
         name:"Raleway",
         sz:10,
         bold:true,
-        color:{rgb:"111827"}
+        color:{rgb:"FFFFFF"}
       },
       fill:{
-        fgColor:{rgb:"D9DEE3"}
+        fgColor:{rgb:"0B1F3A"}
       },
       alignment:{
         horizontal:"center",
@@ -6911,7 +7399,10 @@ function appendMaintenanceTrendSheet(
         font:{
           name:"Raleway",
           sz:9,
-          color:{rgb:"334155"}
+          color:{rgb:"1F2937"}
+        },
+        fill:{
+          fgColor:{rgb:"FFFFFF"}
         },
         alignment:{
           horizontal:
@@ -6946,17 +7437,42 @@ function appendMaintenanceTrendSheet(
 }
 function chartSeriesColors(){
   return [
-    "#4472C4",
-    "#ED7D31",
-    "#A5A5A5",
-    "#FFC000",
-    "#70AD47",
+    "#0B1F3A",
+    "#17365D",
+    "#1F4E78",
+    "#2F75B5",
     "#5B9BD5",
-    "#C55A11",
-    "#8064A2",
-    "#00B0F0",
-    "#7F6000"
+    "#6F8096",
+    "#8497B0",
+    "#A9B9CC",
+    "#355C7D",
+    "#203864"
   ];
+}
+function chartDashPattern(index){
+  return [
+    [],
+    [12,5],
+    [4,4],
+    [14,5,3,5],
+    [2,4],
+    [9,4],
+    [16,5],
+    [6,3,2,3]
+  ][index%8];
+}
+function trendChartHeight(){
+  const legendColumns=Math.min(
+    4,
+    Math.max(1,PROGRAMS.length)
+  );
+  const legendRows=Math.ceil(
+    Math.max(1,PROGRAMS.length)/
+    legendColumns
+  );
+
+  return 470+
+    Math.max(0,legendRows-1)*26;
 }
 function renderTrendChartDataUrl(
   history,
@@ -6965,8 +7481,8 @@ function renderTrendChartDataUrl(
   yAxisLabel,
   percentAxis=false
 ){
-  const width=1240;
-  const height=390;
+  const width=1320;
+  const height=trendChartHeight();
   const canvas=document.createElement(
     "canvas"
   );
@@ -6974,11 +7490,23 @@ function renderTrendChartDataUrl(
   canvas.height=height;
 
   const context=canvas.getContext("2d");
+  const legendColumns=Math.min(
+    4,
+    Math.max(1,PROGRAMS.length)
+  );
+  const legendRows=Math.ceil(
+    Math.max(1,PROGRAMS.length)/
+    legendColumns
+  );
+  const legendRowHeight=25;
+
   const margin={
-    left:92,
-    right:34,
-    top:64,
-    bottom:82
+    left:98,
+    right:42,
+    top:72,
+    bottom:
+      112+
+      legendRows*legendRowHeight
   };
   const plotWidth=
     width-margin.left-margin.right;
@@ -6989,14 +7517,14 @@ function renderTrendChartDataUrl(
   context.fillStyle="#FFFFFF";
   context.fillRect(0,0,width,height);
 
-  context.fillStyle="#5A5A5A";
+  context.fillStyle="#0B1F3A";
   context.font=
-    "600 24px Arial, sans-serif";
+    "600 23px Arial, sans-serif";
   context.textAlign="center";
   context.fillText(
     title,
     width/2,
-    34
+    38
   );
 
   const values=[];
@@ -7023,8 +7551,9 @@ function renderTrendChartDataUrl(
       );
 
   if(!percentAxis){
-    maximum=Math.ceil(
-      maximum*1.15
+    maximum=Math.max(
+      1,
+      Math.ceil(maximum*1.15)
     );
   }
 
@@ -7042,7 +7571,7 @@ function renderTrendChartDataUrl(
       margin.top+
       (plotHeight/yTicks)*index;
 
-    context.strokeStyle="#D0D4D8";
+    context.strokeStyle="#D9E0E7";
     context.beginPath();
     context.moveTo(margin.left,y);
     context.lineTo(
@@ -7051,18 +7580,18 @@ function renderTrendChartDataUrl(
     );
     context.stroke();
 
-    context.fillStyle="#3F3F3F";
+    context.fillStyle="#334155";
     context.textAlign="right";
     context.fillText(
       percentAxis
         ?`${Math.round(value*100)}%`
         :Math.round(value).toLocaleString(),
-      margin.left-12,
+      margin.left-13,
       y+4
     );
   }
 
-  context.strokeStyle="#4B4B4B";
+  context.strokeStyle="#0B1F3A";
   context.lineWidth=1.5;
   context.beginPath();
   context.moveTo(
@@ -7081,11 +7610,11 @@ function renderTrendChartDataUrl(
 
   context.save();
   context.translate(
-    24,
+    27,
     margin.top+plotHeight/2
   );
   context.rotate(-Math.PI/2);
-  context.fillStyle="#333333";
+  context.fillStyle="#0B1F3A";
   context.font=
     "600 15px Arial, sans-serif";
   context.textAlign="center";
@@ -7095,16 +7624,6 @@ function renderTrendChartDataUrl(
     0
   );
   context.restore();
-
-  context.fillStyle="#333333";
-  context.font=
-    "600 15px Arial, sans-serif";
-  context.textAlign="center";
-  context.fillText(
-    "Report date",
-    margin.left+plotWidth/2,
-    height-18
-  );
 
   const pointCount=history.length;
   const xPosition=index=>{
@@ -7120,7 +7639,7 @@ function renderTrendChartDataUrl(
 
   const labelEvery=Math.max(
     1,
-    Math.ceil(pointCount/9)
+    Math.ceil(pointCount/8)
   );
 
   context.font=
@@ -7146,21 +7665,24 @@ function renderTrendChartDataUrl(
         )
       :row.date;
 
-    context.save();
-    context.translate(
-      x,
-      margin.top+plotHeight+18
-    );
-    context.rotate(-Math.PI/5);
-    context.fillStyle="#3F3F3F";
-    context.textAlign="right";
+    context.fillStyle="#334155";
+    context.textAlign="center";
     context.fillText(
       label,
-      0,
-      0
+      x,
+      margin.top+plotHeight+22
     );
-    context.restore();
   });
+
+  context.fillStyle="#0B1F3A";
+  context.font=
+    "600 14px Arial, sans-serif";
+  context.textAlign="center";
+  context.fillText(
+    "Report date",
+    margin.left+plotWidth/2,
+    margin.top+plotHeight+50
+  );
 
   PROGRAMS.forEach((program,seriesIndex)=>{
     const color=
@@ -7169,7 +7691,11 @@ function renderTrendChartDataUrl(
 
     context.strokeStyle=color;
     context.fillStyle=color;
-    context.lineWidth=3;
+    context.lineWidth=
+      seriesIndex===0?3.5:2.7;
+    context.setLineDash(
+      chartDashPattern(seriesIndex)
+    );
     context.beginPath();
 
     history.forEach((row,index)=>{
@@ -7205,6 +7731,7 @@ function renderTrendChartDataUrl(
     });
 
     context.stroke();
+    context.setLineDash([]);
 
     history.forEach((row,index)=>{
       const value=Number(
@@ -7233,7 +7760,7 @@ function renderTrendChartDataUrl(
       context.arc(
         x,
         y,
-        3.2,
+        seriesIndex===0?3.8:3,
         0,
         Math.PI*2
       );
@@ -7241,46 +7768,49 @@ function renderTrendChartDataUrl(
     });
   });
 
-  const legendY=height-51;
-  const legendItemWidth=Math.max(
-    120,
-    Math.floor(
-      (width-80)/
-      Math.max(1,PROGRAMS.length)
-    )
-  );
-  const legendStartX=Math.max(
-    36,
-    (width-
-      legendItemWidth*PROGRAMS.length
-    )/2
-  );
+  const legendStartY=
+    margin.top+
+    plotHeight+
+    82;
+  const legendItemWidth=
+    (width-120)/legendColumns;
 
   context.font=
     "12px Arial, sans-serif";
   context.textAlign="left";
 
   PROGRAMS.forEach((program,index)=>{
+    const rowIndex=Math.floor(
+      index/legendColumns
+    );
+    const columnIndex=
+      index%legendColumns;
     const x=
-      legendStartX+
-      index*legendItemWidth;
+      60+
+      columnIndex*legendItemWidth;
+    const y=
+      legendStartY+
+      rowIndex*legendRowHeight;
     const color=
       colors[index%colors.length];
 
-    context.fillStyle=color;
-    context.fillRect(
-      x,
-      legendY-9,
-      22,
-      4
+    context.strokeStyle=color;
+    context.lineWidth=3;
+    context.setLineDash(
+      chartDashPattern(index)
     );
+    context.beginPath();
+    context.moveTo(x,y-4);
+    context.lineTo(x+27,y-4);
+    context.stroke();
+    context.setLineDash([]);
 
-    context.fillStyle="#3F3F3F";
+    context.fillStyle="#1F2937";
     context.fillText(
       program.shortLabel||
         program.label,
-      x+30,
-      legendY
+      x+36,
+      y
     );
   });
 
@@ -7667,7 +8197,7 @@ async function writeWorkbookWithTrendCharts(
         yAxisLabel:
           "Unique overdue VINs",
         percentAxis:false,
-        topRow:24
+        topRow:30
       },
       {
         metricKey:"schedulingGap",
@@ -7675,7 +8205,7 @@ async function writeWorkbookWithTrendCharts(
           "Vended Maintenance Scheduling Gap",
         yAxisLabel:"Scheduling gap %",
         percentAxis:true,
-        topRow:46
+        topRow:58
       }
     ];
 
@@ -7703,8 +8233,8 @@ async function writeWorkbookWithTrendCharts(
             row:chartConfig.topRow
           },
           ext:{
-            width:1240,
-            height:390
+            width:1320,
+            height:trendChartHeight()
           },
           editAs:"oneCell"
         }
@@ -7713,8 +8243,8 @@ async function writeWorkbookWithTrendCharts(
 
     worksheet.views=[
       {
-        state:"frozen",
-        ySplit:69
+        state:"normal",
+        showGridLines:false
       }
     ];
   }
@@ -7864,42 +8394,82 @@ async function loadFromFirebase(){
     return;
   }
 
-  const requestedCustomer=activeCustomerKey;
-  const sourcePaths=activeSourcePaths();
+  const requestedCustomer=
+    activeCustomerKey;
+  const sourcePaths=
+    activeSourcePaths();
 
   try{
+    const totalFiles=
+      1+sourcePaths.length;
+    let completedFiles=0;
+
     setStatus(
       "loading",
       `Fetching ${activeCustomerProfile.label} workbooks`,
-      `Downloading master_workFLOWtest.xlsx${sourcePaths.length?` and ${sourcePaths.length} customer source workbook${sourcePaths.length===1?"":"s"}`:""} from Firebase Storage…`
+      `Loading 1 of ${totalFiles}: ${WORKBOOK_PATH}`
     );
 
-    const [
-      master,
-      sourceEntries
-    ]=await Promise.all([
-      fetchStorageBuffer(WORKBOOK_PATH),
-      Promise.all(
-        sourcePaths.map(async path=>[
-          path,
-          await fetchStorageBuffer(path)
-        ])
-      )
-    ]);
+    const master=
+      await fetchStorageBuffer(
+        WORKBOOK_PATH
+      );
 
-    if(requestedCustomer!==activeCustomerKey){
+    completedFiles++;
+
+    if(
+      requestedCustomer!==
+      activeCustomerKey
+    ){
       return;
     }
 
-    const buffers={
-      master,
-      sources:Object.fromEntries(
-        sourceEntries
-      )
-    };
+    const sourceEntries=[];
+
+    for(
+      let index=0;
+      index<sourcePaths.length;
+      index++
+    ){
+      const path=sourcePaths[index];
+
+      setStatus(
+        "loading",
+        `Fetching ${activeCustomerProfile.label} workbooks`,
+        `Loaded ${completedFiles} of ${totalFiles}. Loading ${index+2} of ${totalFiles}: ${path}`
+      );
+
+      const buffer=
+        await fetchStorageBuffer(path);
+
+      sourceEntries.push([
+        path,
+        buffer
+      ]);
+
+      completedFiles++;
+
+      if(
+        requestedCustomer!==
+        activeCustomerKey
+      ){
+        return;
+      }
+    }
+
+    setStatus(
+      "loading",
+      `Processing ${activeCustomerProfile.label} workbooks`,
+      `All ${totalFiles} workbooks downloaded. Calculating maintenance metrics…`
+    );
 
     await processBuffer(
-      buffers,
+      {
+        master,
+        sources:Object.fromEntries(
+          sourceEntries
+        )
+      },
       "Firebase Storage"
     );
   }catch(error){
@@ -7921,7 +8491,7 @@ async function loadFromFirebase(){
       `Unable to load ${activeCustomerProfile.label}. Firebase returned: ${errorMessage}`,
       `Expected customer source workbook(s): ${activeSourcePaths().join(", ")}.`,
       activeCustomerKey==="frontier"
-        ?"For the DOT source, either Frontier DOT.xlsx or Frontier DOT(1).xlsx is accepted."
+        ?"Frontier now stops on the exact failed workbook. For DOT, either Frontier DOT.xlsx or Frontier DOT(1).xlsx is accepted."
         :"Confirm the workbook filenames in Firebase Storage match exactly."
     ]);
   }
@@ -7933,9 +8503,11 @@ async function exportCustomerMaintenance(){
 
   const [
     slippageHistory,
+    slippageMetricsHistory,
     trendHistory
   ]=await Promise.all([
     loadEcdSlippageHistory(),
+    loadEcdSlippageMetricsHistory(),
     loadMaintenanceTrendHistory()
   ]);
 
@@ -8087,8 +8659,9 @@ async function exportCustomerMaintenance(){
   const fileLabel=activeCustomerProfile.label
     .replace(/[^A-Za-z0-9]+/g,"_");
 
-  appendEcdSlippageSheet(
+  appendEcdSlippageSheets(
     wb,
+    slippageMetricsHistory,
     slippageHistory
   );
 
@@ -8121,7 +8694,7 @@ async function exportAllTables(){
     setStatus(
       "ok",
       "Workbook export created",
-      "The export includes ECD Slippage and Vended Maintenance Trends tabs."
+      "The export includes ECD Slippage percentage, ECD Slippage Detail, and Vended Maintenance Trends tabs."
     );
   }catch(error){
     console.error(
