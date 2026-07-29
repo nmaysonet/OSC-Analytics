@@ -1204,7 +1204,7 @@
             </section>
           </div>
 
-          <div class="opd-footer"><strong>Workbook-derived:</strong> A single open order may count separately under PM, DOT, A/C, and LTS. ANNUAL INSPECTION routes to DOT and GARDA AC CHECK routes to A/C whenever those phrases appear anywhere inside the combined VRO task text, regardless of the order’s REPCLASS. PM remains driven by a PM REPCLASS and counts approved PM task names or other remaining PM-repclass task content after the separate DOT, A/C, LTS, and coolant phrases are removed. Repeated task phrases on one order are deduplicated by unique Order + program. All PM-related compliance calculations use Garda's formula: 1 - (distinct overdue VINs / total active VINs). # Overdue Not Scheduled is the hard count of unique overdue VINs that do not yet have every required PM or inspection fully scheduled. That includes VINs with no matching VRO, VROs still in Unassigned ROs, missing ECDs, or only part of the overdue work scheduled. Scheduling Gap is that same count divided by total active VINs. Coming-due VINs stay in the detailed scheduling report but do not reduce compliance or Scheduling Gap until they become overdue. Duplicate VIN interval rows use OR logic: if mileage or time/frequency reaches the threshold, the VIN is controlled by that requirement. OOS movement is calculated from the unique Unit # values marked OOS on the OOS GARDA tab for the approved 67 branches. Vehicles Returned to Service and New Units OOS are calculated for both days. Current Day compares today's OOS unit list to the prior snapshot; Prior Day compares the prior snapshot to the snapshot before it. Delta is Current Day minus Prior Day. Maintenance VRO matching is performed by normalized VIN across all orders. The PM, DOT, AC, and LTS source tabs establish the approved 67-site VIN population, so a VRO is not discarded when its customer branch code is different, malformed, or blank. PM is recognized from a PM REPCLASS or approved PM task text; ANNUAL INSPECTION, GARDA AC CHECK, and GARDA LTS SYSTEM CHECK are recognized anywhere in combined task text. Completed or Final Charges Submitted work counts only when its completion date is later than the requirement's LASTDONE date on the source tab.</div>
+          <div class="opd-footer"><strong>Workbook-derived:</strong> A single open order may count separately under PM, DOT, A/C, and LTS. ANNUAL INSPECTION routes to DOT and GARDA AC CHECK routes to A/C whenever those phrases appear anywhere inside the combined VRO task text, regardless of the order’s REPCLASS. PM remains driven by a PM REPCLASS and counts approved PM task names or other remaining PM-repclass task content after the separate DOT, A/C, LTS, and coolant phrases are removed. Repeated task phrases on one order are deduplicated by unique Order + program. All PM-related compliance calculations use Garda's formula: 1 - (distinct overdue VINs / total active VINs). # Overdue Not Scheduled is the hard count of unique overdue VINs that do not yet have every required PM or inspection fully scheduled. That includes VINs with no matching VRO, VROs still in Unassigned ROs, missing ECDs, or only part of the overdue work scheduled. Scheduling Gap is that same count divided by total active VINs. Coming-due VINs stay in the detailed scheduling report but do not reduce compliance or Scheduling Gap until they become overdue. Duplicate VIN interval rows use OR logic: if mileage or time/frequency reaches the threshold, the VIN is controlled by that requirement. OOS movement is calculated from the unique Unit # values marked OOS on the OOS GARDA tab for the approved 67 branches. Vehicles Returned to Service and New Units OOS are calculated for both days. Current Day compares today's OOS unit list to the prior snapshot; Prior Day compares the prior snapshot to the snapshot before it. Delta is Current Day minus Prior Day. Maintenance VRO matching is performed by normalized VIN across all orders. The PM, DOT, AC, and LTS source tabs establish the approved 67-site VIN population, so a VRO is not discarded when its customer branch code is different, malformed, or blank. PM is recognized from a PM REPCLASS or approved PM task text; ANNUAL INSPECTION, GARDA AC CHECK, and GARDA LTS SYSTEM CHECK are recognized anywhere in combined task text. Completed or Final Charges Submitted work counts only when its completion date is later than the requirement's LASTDONE date on the source tab. The report export includes separate PM Not Scheduled, DOT Not Scheduled, LTS PM Not Scheduled, and AC Not Scheduled tabs.</div>
         </div>
       </div>
     </section>
@@ -3932,14 +3932,34 @@ function buildEcdDetailRows(detailData){
 
   return [headers,...records.map(record=>record.row)];
 }
-function buildPmNotScheduledRows(detailData){
+function maintenanceRequirementLabel(requirement){
+  if(MAINTENANCE_REQUIREMENT_LABELS[requirement]){
+    return MAINTENANCE_REQUIREMENT_LABELS[requirement];
+  }
+
+  if(String(requirement||"").startsWith("unmapped:")){
+    return String(requirement).replace("unmapped:","");
+  }
+
+  return requirement||"Maintenance";
+}
+function buildMaintenanceNotScheduledRows(
+  detailData,
+  sourceProgram,
+  reportLabel
+){
+  const matchingOrderHeader=
+    sourceProgram==="lts"
+      ?"Matching Maintenance Order(s)"
+      :`Matching ${reportLabel} Order(s)`;
+
   const headers=[
     "VIN",
     "Source Status",
     "Reason",
     "Overdue Requirement(s)",
     "Coming-Due Requirement(s)",
-    "Matching PM Order(s)",
+    matchingOrderHeader,
     "VRO Status(es)",
     "ECD(s)",
     "ECD Bucket(s)",
@@ -3948,122 +3968,273 @@ function buildPmNotScheduledRows(detailData){
     "Source Interval Detail",
     "Source Row Count"
   ];
-  const source=detailData?.complianceSources?.pm;
-  if(!source)return [headers];
 
+  const source=
+    detailData?.complianceSources?.[sourceProgram];
+
+  if(!source){
+    return [headers];
+  }
+
+  /*
+    Search every maintenance order for the VIN. This is required for LTS
+    because one LTS source VIN may require separate PM, A/C, LTS System
+    Check, and Coolant System Check orders.
+  */
   const itemsByVin=new Map();
+
   (detailData?.maintenanceItems||[])
-    .filter(item=>item.program==="pm"&&item.vin)
+    .filter(item=>item.vin)
     .forEach(item=>{
-      if(!itemsByVin.has(item.vin))itemsByVin.set(item.vin,[]);
+      if(!itemsByVin.has(item.vin)){
+        itemsByVin.set(item.vin,[]);
+      }
+
       itemsByVin.get(item.vin).push(item);
     });
 
   const rows=[];
 
-  Object.entries(source.units||{}).forEach(([vin,unit])=>{
-    const overdue=unit.overdueRequirements||[];
-    const comingDue=unit.comingDueRequirements||[];
-    const dueRequirements=unit.dueRequirements||[];
+  Object.entries(source.units||{})
+    .forEach(([vin,unit])=>{
+      const overdue=
+        unit.overdueRequirements||[];
+      const comingDue=
+        unit.comingDueRequirements||[];
+      const dueRequirements=
+        unit.dueRequirements||[];
 
-    if(!dueRequirements.length)return;
-
-    const items=itemsByVin.get(vin)||[];
-    const qualifyingItems=
-      qualifyingRequirementItems(
-        items,
-        unit,
-        "pm"
-      );
-
-    if(qualifyingItems.length)return;
-
-    const reasons=[];
-
-    if(!items.length){
-      reasons.push("No PM VRO");
-    }else{
-      if(items.some(
-        item=>item.status==="UNASSIGNED ROS"
-      )){
-        reasons.push("Unassigned ROs");
+      if(!dueRequirements.length){
+        return;
       }
 
-      if(items.some(
-        item=>
-          OPEN_STATUSES.has(item.status)&&
-          item.status!=="UNASSIGNED ROS"&&
-          !parseDate(item.due)
-      )){
-        reasons.push("Missing ECD");
-      }
+      const allVinItems=
+        itemsByVin.get(vin)||[];
 
-      if(items.some(
-        item=>
-          item.completed&&
-          !completedAfterSourceLastDone(
-            item,
+      const missingRequirements=
+        dueRequirements.filter(requirement=>{
+          const requirementItems=
+            allVinItems.filter(
+              item=>item.program===requirement
+            );
+
+          return !qualifyingRequirementItems(
+            requirementItems,
             unit,
-            "pm"
-          )
-      )){
-        reasons.push(
-          "Historical PM completion already reflected"
-        );
+            requirement
+          ).length;
+        });
+
+      /*
+        The VIN belongs on a Not Scheduled tab only when at least one
+        source requirement still lacks a qualifying open schedule or a
+        qualifying completion after LASTDONE.
+      */
+      if(!missingRequirements.length){
+        return;
       }
-    }
 
-    if(!reasons.length){
-      reasons.push("Not Fully Scheduled");
-    }
+      const missingSet=
+        new Set(missingRequirements);
 
-    const sourceStatus=overdue.length
-      ?"Overdue"
-      :"Coming Soon";
+      const missingOverdue=
+        overdue.filter(
+          requirement=>missingSet.has(requirement)
+        );
 
-    const intervalDetail=(unit.rows||[])
-      .map(row=>{
-        const parts=[
-          row.meterType||"Interval",
-          !isBlank(row.interval)?`Interval ${row.interval}`:"",
-          row.dueCategory||"",
-          duePercentText(row.duePercent)
-        ].filter(Boolean);
-        return parts.join(" · ");
-      })
-      .filter(Boolean)
-      .join(" | ");
+      const missingComingDue=
+        comingDue.filter(
+          requirement=>missingSet.has(requirement)
+        );
 
-    rows.push([
-      vin,
-      sourceStatus,
-      reasons.join("; "),
-      overdue.join(", "),
-      comingDue.join(", "),
-      uniqueText(items.map(item=>item.order)),
-      uniqueText(items.map(item=>item.status)),
-      uniqueText(items.map(item=>dateText(item.due))),
-      uniqueText(items.map(
-        item=>
-          EXPORT_BUCKET_LABELS[item.bucket]||
-          item.bucket
-      )),
-      uniqueText(items.map(
-        item=>dateText(item.completedDate)
-      )),
-      uniqueText(items.map(item=>item.task)),
-      intervalDetail,
-      unit.rowCount||0
-    ]);
-  });
+      const matchingItems=
+        allVinItems.filter(
+          item=>dueRequirements.includes(item.program)
+        );
+
+      const reasons=new Set();
+
+      missingRequirements.forEach(requirement=>{
+        const requirementLabel=
+          maintenanceRequirementLabel(requirement);
+
+        const requirementItems=
+          allVinItems.filter(
+            item=>item.program===requirement
+          );
+
+        if(!requirementItems.length){
+          reasons.add(
+            `No ${requirementLabel} VRO`
+          );
+          return;
+        }
+
+        let requirementReasonFound=false;
+
+        if(requirementItems.some(
+          item=>item.status==="UNASSIGNED ROS"
+        )){
+          reasons.add(
+            `${requirementLabel}: Unassigned ROs`
+          );
+          requirementReasonFound=true;
+        }
+
+        if(requirementItems.some(
+          item=>
+            OPEN_STATUSES.has(item.status)&&
+            item.status!=="UNASSIGNED ROS"&&
+            !parseDate(item.due)
+        )){
+          reasons.add(
+            `${requirementLabel}: Missing ECD`
+          );
+          requirementReasonFound=true;
+        }
+
+        if(requirementItems.some(
+          item=>
+            COMPLETED_STATUSES.has(item.status)&&
+            !parseDate(item.completedDate)
+        )){
+          reasons.add(
+            `${requirementLabel}: Missing completion date`
+          );
+          requirementReasonFound=true;
+        }
+
+        if(requirementItems.some(
+          item=>
+            item.completed&&
+            !completedAfterSourceLastDone(
+              item,
+              unit,
+              requirement
+            )
+        )){
+          reasons.add(
+            `${requirementLabel}: Historical completion already reflected`
+          );
+          requirementReasonFound=true;
+        }
+
+        if(!requirementReasonFound){
+          reasons.add(
+            `${requirementLabel}: Not Fully Scheduled`
+          );
+        }
+      });
+
+      const sourceStatus=
+        missingOverdue.length
+          ?"Overdue"
+          :"Coming Soon";
+
+      const intervalDetail=
+        (unit.rows||[])
+          .filter(
+            row=>missingSet.has(row.requirement)
+          )
+          .map(row=>{
+            const parts=[
+              maintenanceRequirementLabel(
+                row.requirement
+              ),
+              row.meterType||"Interval",
+              !isBlank(row.interval)
+                ?`Interval ${row.interval}`
+                :"",
+              row.dueCategory||"",
+              duePercentText(row.duePercent)
+            ].filter(Boolean);
+
+            return parts.join(" · ");
+          })
+          .filter(Boolean)
+          .join(" | ");
+
+      rows.push([
+        vin,
+        sourceStatus,
+        [...reasons].join("; "),
+        missingOverdue
+          .map(maintenanceRequirementLabel)
+          .join(", "),
+        missingComingDue
+          .map(maintenanceRequirementLabel)
+          .join(", "),
+        uniqueText(
+          matchingItems.map(item=>item.order)
+        ),
+        uniqueText(
+          matchingItems.map(item=>item.status)
+        ),
+        uniqueText(
+          matchingItems.map(
+            item=>dateText(item.due)
+          )
+        ),
+        uniqueText(
+          matchingItems.map(
+            item=>
+              EXPORT_BUCKET_LABELS[item.bucket]||
+              item.bucket
+          )
+        ),
+        uniqueText(
+          matchingItems.map(
+            item=>dateText(item.completedDate)
+          )
+        ),
+        uniqueText(
+          matchingItems.map(item=>item.task)
+        ),
+        intervalDetail,
+        unit.rowCount||0
+      ]);
+    });
 
   rows.sort((a,b)=>
-    (a[1]==="Overdue"?0:1)-(b[1]==="Overdue"?0:1)||
-    String(a[2]).localeCompare(String(b[2]))||
-    String(a[0]).localeCompare(String(b[0]))
+    (a[1]==="Overdue"?0:1)-
+      (b[1]==="Overdue"?0:1)||
+    String(a[2]).localeCompare(
+      String(b[2])
+    )||
+    String(a[0]).localeCompare(
+      String(b[0])
+    )
   );
 
   return [headers,...rows];
+}
+function buildPmNotScheduledRows(detailData){
+  return buildMaintenanceNotScheduledRows(
+    detailData,
+    "pm",
+    "PM"
+  );
+}
+function buildDotNotScheduledRows(detailData){
+  return buildMaintenanceNotScheduledRows(
+    detailData,
+    "dot",
+    "DOT"
+  );
+}
+function buildLtsNotScheduledRows(detailData){
+  return buildMaintenanceNotScheduledRows(
+    detailData,
+    "lts",
+    "LTS PM"
+  );
+}
+function buildAcNotScheduledRows(detailData){
+  return buildMaintenanceNotScheduledRows(
+    detailData,
+    "ac",
+    "A/C"
+  );
 }
 function buildOosMovementRows(detailData,priorOosIds){
   const headers=[
@@ -4503,14 +4674,60 @@ function exportAllTables(){
     "ECD Detail"
   );
 
-  const pmNotScheduledRows=buildPmNotScheduledRows(detailData);
+  const maintenanceNotScheduledWidths=[
+    20,16,34,24,24,28,24,26,24,22,58,52,16
+  ];
+
+  const pmNotScheduledRows=
+    buildPmNotScheduledRows(detailData);
+
   XLSX.utils.book_append_sheet(
     wb,
     makeDetailSheet(
       pmNotScheduledRows,
-      [20,16,24,22,24,25,22,26,24,22,58,48,16]
+      maintenanceNotScheduledWidths
     ),
     "PM Not Scheduled"
+  );
+
+  const dotNotScheduledRows=
+    buildDotNotScheduledRows(detailData);
+
+  XLSX.utils.book_append_sheet(
+    wb,
+    makeDetailSheet(
+      dotNotScheduledRows,
+      maintenanceNotScheduledWidths
+    ),
+    "DOT Not Scheduled"
+  );
+
+  const ltsNotScheduledRows=
+    buildLtsNotScheduledRows(detailData);
+
+  XLSX.utils.book_append_sheet(
+    wb,
+    makeDetailSheet(
+      ltsNotScheduledRows,
+      maintenanceNotScheduledWidths
+    ),
+    "LTS PM Not Scheduled"
+  );
+
+  const acNotScheduledRows=
+    buildAcNotScheduledRows(detailData);
+
+  /*
+    Excel worksheet names cannot contain a slash, so the workbook tab
+    is named AC Not Scheduled while the report content remains A/C.
+  */
+  XLSX.utils.book_append_sheet(
+    wb,
+    makeDetailSheet(
+      acNotScheduledRows,
+      maintenanceNotScheduledWidths
+    ),
+    "AC Not Scheduled"
   );
 
   const vrNotScheduledRows=buildVrNotScheduledRows(detailData);
