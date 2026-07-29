@@ -348,7 +348,7 @@
       font-size:12px;
     }
 
-    .report-table { min-width:1710px; }
+    .report-table { min-width:1880px; }
     .config-table { min-width:1450px; }
 
     thead th {
@@ -623,6 +623,19 @@
       font-weight:700;
     }
 
+    #editPassword {
+      position:relative;
+      z-index:2;
+      pointer-events:auto;
+      user-select:text;
+      caret-color:#111827;
+      background:#fff!important;
+      color:#111827!important;
+      opacity:1!important;
+      font-family:"Segoe UI",Arial,sans-serif;
+      letter-spacing:0;
+    }
+
     .annualization-controls {
       display:flex;
       align-items:end;
@@ -866,8 +879,15 @@
         </div>
         <div class="field">
           <label for="editPassword">Edit Password</label>
-          <input id="editPassword" type="password" autocomplete="current-password" spellcheck="false"
-                 onkeypress="if(event.key === 'Enter') unlockEditing()">
+          <input id="editPassword"
+                 type="text"
+                 inputmode="text"
+                 autocomplete="off"
+                 autocapitalize="off"
+                 spellcheck="false"
+                 placeholder="Type Password 123!"
+                 oninput="document.getElementById('unlockError').style.display='none'"
+                 onkeydown="if(event.key === 'Enter'){event.preventDefault(); unlockEditing();}">
         </div>
         <div id="unlockError" class="form-error">Incorrect edit password.</div>
       </div>
@@ -1046,6 +1066,7 @@
       { key:"forecastedAnnualMarginDollars", label:"Forecated Annual Margin $", width:155, type:"money" },
       { key:"forecastedMarginPct", label:"Forecasted Margin %", width:120, type:"percent" },
       { key:"annualizedCurrentRevenueRunRate", label:"Annualized Current Revenue Run Rate", width:175, type:"money" },
+      { key:"expectedCurrentYearRevenue", label:"Expected Current Year Revenue", width:170, type:"money" },
       { key:"annualizedCurrentDemandRate", label:"Annualized Current Demand Rate (VRO)", width:175, type:"integer" }
     ];
 
@@ -1053,7 +1074,12 @@
     let SALESFORCE_CUSTOMERS = new Map();
     let VRO_DATA = { latestDate:new Date(), customers:[] };
     let MANUAL_CUSTOMERS = {};
-    let EDIT_UNLOCKED = sessionStorage.getItem("oscMonetizationEditUnlocked") === "1";
+    let EDIT_UNLOCKED = false;
+    try {
+      EDIT_UNLOCKED = sessionStorage.getItem("oscMonetizationEditUnlocked") === "1";
+    } catch (storageError) {
+      EDIT_UNLOCKED = false;
+    }
     let DATABASE_LISTENER_STARTED = false;
     const MATCH_CACHE = new Map();
 
@@ -1386,6 +1412,67 @@
       }
 
       return yearStart;
+    }
+
+    function expectedCurrentYearStart(record, service, actual = null) {
+      const latest = VRO_DATA.latestDate || new Date();
+      const yearStart = new Date(latest.getFullYear(), 0, 1);
+      const annualization = programAnnualizationSettings(record, service);
+
+      if (annualization.existingProgram) return yearStart;
+
+      if (annualization.launchDate) {
+        const launchDate = new Date(`${annualization.launchDate}T00:00:00`);
+
+        if (!Number.isNaN(launchDate.getTime())) {
+          return launchDate > yearStart ? launchDate : yearStart;
+        }
+      }
+
+      /*
+        Do not assume January 1 for a new program with no configured launch
+        and no VRO activity. A first VRO can establish the inferred launch.
+      */
+      if (actual?.demand > 0) {
+        return actual.serviceStarts?.[service] || actual.startDate || null;
+      }
+
+      return null;
+    }
+
+    function calculateExpectedCurrentYearRevenue(
+      annualizedCurrentRevenueRunRate,
+      forecastedAnnualRevenue,
+      programStart
+    ) {
+      if (!programStart) return null;
+
+      const annualRate =
+        Number(annualizedCurrentRevenueRunRate) > 0
+          ? Number(annualizedCurrentRevenueRunRate)
+          : Number(forecastedAnnualRevenue) > 0
+            ? Number(forecastedAnnualRevenue)
+            : 0;
+
+      if (!annualRate) return null;
+
+      const year = (VRO_DATA.latestDate || new Date()).getFullYear();
+      const yearStart = new Date(year, 0, 1);
+      const nextYearStart = new Date(year + 1, 0, 1);
+      const yearEnd = new Date(year, 11, 31);
+      const effectiveStart = programStart > yearStart
+        ? programStart
+        : yearStart;
+
+      if (effectiveStart > yearEnd) return 0;
+
+      const daysInYear = Math.round(
+        (nextYearStart.getTime() - yearStart.getTime()) / 86400000
+      );
+      const activeDays =
+        Math.floor((yearEnd.getTime() - effectiveStart.getTime()) / 86400000) + 1;
+
+      return annualRate * activeDays / daysInYear;
     }
 
     function getActuals(customerName, services, record = null) {
@@ -1761,6 +1848,11 @@
           ? forecastMargin / forecastRevenue * 100
           : null,
         annualizedCurrentRevenueRunRate:currentRevenueRunRate,
+        expectedCurrentYearRevenue:calculateExpectedCurrentYearRevenue(
+          currentRevenueRunRate,
+          forecastRevenue,
+          expectedCurrentYearStart(record, service, actual)
+        ),
         annualizedCurrentDemandRate:actual.annualizedDemand,
         fixedFeeWeeklyBilling:fixedWeekly || null,
         handlingFeePerCall:handlingFee || null,
@@ -1824,6 +1916,11 @@
             ? forecastMargin / item.annualEstimatedRevenue * 100
             : null,
           annualizedCurrentRevenueRunRate:currentRevenueRunRate,
+          expectedCurrentYearRevenue:calculateExpectedCurrentYearRevenue(
+            currentRevenueRunRate,
+            item.annualEstimatedRevenue,
+            expectedCurrentYearStart(null, service, actual)
+          ),
           annualizedCurrentDemandRate:currentDemandRate,
           fixedFeeWeeklyBilling:fixedWeekly || null,
           handlingFeePerCall:handlingFee || null,
@@ -1876,6 +1973,11 @@
                 ? annualMargin / annualRevenue * 100
                 : null,
               annualizedCurrentRevenueRunRate:null,
+              expectedCurrentYearRevenue:calculateExpectedCurrentYearRevenue(
+                null,
+                annualRevenue,
+                expectedCurrentYearStart(record, service, actual)
+              ),
               annualizedCurrentDemandRate:null,
               fixedFeeWeeklyBilling:safeNumber(settings.fixedFeeWeeklyBilling),
               handlingFeePerCall:safeNumber(settings.handlingFeePerCall),
@@ -1948,6 +2050,9 @@
       const annualizedCurrentDemandRate = rows.reduce(
         (sum, row) => sum + (Number(row.annualizedCurrentDemandRate) || 0), 0
       );
+      const expectedCurrentYearRevenue = rows.reduce(
+        (sum, row) => sum + (Number(row.expectedCurrentYearRevenue) || 0), 0
+      );
 
       return {
         segmentOrCustomer:label,
@@ -1962,6 +2067,7 @@
         annualizedCurrentRevenueRunRate:includeActuals
           ? annualizedCurrentRevenueRunRate
           : null,
+        expectedCurrentYearRevenue,
         annualizedCurrentDemandRate:includeActuals
           ? annualizedCurrentDemandRate
           : null
@@ -1995,6 +2101,7 @@
         forecastedAnnualMarginDollars:row.annualEstimatedMarginDollars,
         forecastedMarginPct:row.estimatedMarginPct,
         annualizedCurrentRevenueRunRate:row.annualizedCurrentRevenueRunRate,
+        expectedCurrentYearRevenue:row.expectedCurrentYearRevenue,
         annualizedCurrentDemandRate:row.annualizedCurrentDemandRate
       };
 
@@ -2121,6 +2228,7 @@
         row.annualEstimatedMarginDollars,
         row.estimatedMarginPct,
         row.annualizedCurrentRevenueRunRate,
+        row.expectedCurrentYearRevenue,
         row.annualizedCurrentDemandRate
       ].map((value, index) =>
         exportReportValue(value, REPORT_COLUMNS[index].type)
@@ -2433,28 +2541,43 @@
 
     function openUnlockModal() {
       if (EDIT_UNLOCKED) return;
-      document.getElementById("editPassword").value = "";
+
+      const passwordField = document.getElementById("editPassword");
+      passwordField.value = "";
       document.getElementById("unlockError").style.display = "none";
       openModal("unlockModal");
-      setTimeout(() => document.getElementById("editPassword").focus(), 50);
+
+      requestAnimationFrame(() => {
+        passwordField.disabled = false;
+        passwordField.focus({ preventScroll:true });
+        passwordField.click();
+      });
     }
 
     function unlockEditing() {
       const passwordField = document.getElementById("editPassword");
-      const enteredPassword = passwordField.value.trim();
+      const enteredPassword = String(passwordField.value || "")
+        .replace(/\u00A0/g, " ")
+        .trim();
       const error = document.getElementById("unlockError");
 
       error.style.display = "none";
 
       if (enteredPassword !== EDIT_PASSWORD) {
         error.style.display = "block";
-        passwordField.focus();
+        passwordField.focus({ preventScroll:true });
         passwordField.select();
         return;
       }
 
       EDIT_UNLOCKED = true;
-      sessionStorage.setItem("oscMonetizationEditUnlocked", "1");
+
+      try {
+        sessionStorage.setItem("oscMonetizationEditUnlocked", "1");
+      } catch (storageError) {
+        console.warn("Session storage is unavailable.", storageError);
+      }
+
       passwordField.value = "";
       closeModal("unlockModal");
       updateEditControls();
@@ -2463,7 +2586,12 @@
 
     function lockEditing() {
       EDIT_UNLOCKED = false;
-      sessionStorage.removeItem("oscMonetizationEditUnlocked");
+
+      try {
+        sessionStorage.removeItem("oscMonetizationEditUnlocked");
+      } catch (storageError) {
+        console.warn("Session storage is unavailable.", storageError);
+      }
 
       closeModal("unlockModal");
       closeModal("customerEditorModal");
@@ -2720,7 +2848,8 @@
       const recordId = document.getElementById("manualRecordId").value;
       const customer = document.getElementById("manualCustomerName").value.trim();
       const status = document.getElementById("manualStatus").value;
-      const services = {};
+      const existingRecord = recordId ? (MANUAL_CUSTOMERS[recordId] || {}) : {};
+      const services = { ...(existingRecord.services || {}) };
       let selectedCount = 0;
 
       if (!customer) {
@@ -2730,7 +2859,23 @@
 
       for (const service of SERVICE_TYPES) {
         const enabled = document.getElementById(serviceInputId(service, "enabled")).checked;
-        if (!enabled) continue;
+        const priorSettings = legacyServiceSettings(existingRecord, service) || {};
+        const storageKey =
+          service === "PM" &&
+          !existingRecord.services?.PM &&
+          existingRecord.services?.["Vended Maintenance"]
+            ? "Vended Maintenance"
+            : service;
+
+        if (!enabled) {
+          if (Object.keys(priorSettings).length) {
+            services[storageKey] = {
+              ...priorSettings,
+              enabled:false
+            };
+          }
+          continue;
+        }
 
         selectedCount += 1;
 
@@ -2743,7 +2888,8 @@
               serviceInputId(service, "launchDate")
             ).value;
 
-        services[service] = {
+        services[storageKey] = {
+          ...priorSettings,
           enabled:true,
           existingProgram,
           launchDate,
@@ -2762,6 +2908,7 @@
       }
 
       const payload = {
+        ...existingRecord,
         customer,
         status,
         services,
@@ -2778,7 +2925,7 @@
           ? firebase.database().ref(`${MANUAL_CUSTOMERS_PATH}/${recordId}`)
           : firebase.database().ref(MANUAL_CUSTOMERS_PATH).push();
 
-        await ref.set(payload);
+        await ref.update(payload);
         closeModal("customerEditorModal");
       } catch (error) {
         showEditorError(error.message || String(error));
