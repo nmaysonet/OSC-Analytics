@@ -446,6 +446,29 @@
       font-weight:800;
     }
 
+    .report-table td.not-applicable {
+      background-color:#e7e7e7!important;
+      background-image:repeating-linear-gradient(
+        135deg,
+        rgba(120,120,120,.22) 0,
+        rgba(120,120,120,.22) 1px,
+        transparent 1px,
+        transparent 4px
+      )!important;
+      color:transparent!important;
+    }
+
+    .report-table tr:hover td.not-applicable {
+      background-color:#e7e7e7!important;
+      background-image:repeating-linear-gradient(
+        135deg,
+        rgba(120,120,120,.22) 0,
+        rgba(120,120,120,.22) 1px,
+        transparent 1px,
+        transparent 4px
+      )!important;
+    }
+
     .num { text-align:right!important; }
 
     .config-toolbar {
@@ -1065,8 +1088,8 @@
       { key:"forecastedAnnualRevenue", label:"Forecasted Annual Revenue", width:155, type:"money" },
       { key:"forecastedAnnualMarginDollars", label:"Forecated Annual Margin $", width:155, type:"money" },
       { key:"forecastedMarginPct", label:"Forecasted Margin %", width:120, type:"percent" },
-      { key:"annualizedCurrentRevenueRunRate", label:"Annualized Current Revenue Run Rate", width:175, type:"money" },
       { key:"expectedCurrentYearRevenue", label:"Expected Current Year Revenue", width:170, type:"money" },
+      { key:"annualizedCurrentRevenueRunRate", label:"Annualized Current Revenue Run Rate", width:175, type:"money" },
       { key:"annualizedCurrentDemandRate", label:"Annualized Current Demand Rate (VRO)", width:175, type:"integer" }
     ];
 
@@ -1715,10 +1738,12 @@
         const repclass = String(valueAt(row, index.repclass) ?? "").trim().toUpperCase();
 
         // Bartlett Tree Experts and Macy's are ERSA customers for monetization.
-        // Every VRO for these customers is eligible, regardless of REPCLASS,
-        // including blank or customer-specific repair classes not in the map.
-        const service = anyRepclassCustomer ? "ERS" : REPCLASS_SERVICE_MAP[repclass];
-        if (!service) continue;
+        // Every VRO for these customers is eligible, regardless of REPCLASS.
+        // For all other customers, REPCLASS values not explicitly mapped to ERS or PM
+        // default to Vended Repair rather than being excluded from monetization.
+        const service = anyRepclassCustomer
+          ? "ERS"
+          : (REPCLASS_SERVICE_MAP[repclass] || "Vended Repair");
 
         const customer = anyRepclassCustomer || sourceCustomer;
         const opened = excelDate(valueAt(row, index.opened));
@@ -2034,6 +2059,17 @@
       return escapeText(value || "");
     }
 
+    function isReportValueBlank(value) {
+      return value === null || value === undefined || value === "";
+    }
+
+    function reportCellClass(value, type) {
+      const classes = [];
+      if (type) classes.push("num");
+      if (isReportValueBlank(value)) classes.push("not-applicable");
+      return classes.join(" ");
+    }
+
     function segmentMetrics(label, rows, includeActuals) {
       const forecastedAnnualDemand = rows.reduce(
         (sum, row) => sum + (Number(row.totalEstimatedDemand) || 0), 0
@@ -2078,7 +2114,7 @@
       return `
         <tr class="segment-summary-row">
           ${REPORT_COLUMNS.map(column => `
-            <td class="${column.type ? "num" : ""}">
+            <td class="${reportCellClass(metrics[column.key], column.type)}">
               ${reportFormatValue(metrics[column.key], column.type)}
             </td>
           `).join("")}
@@ -2108,7 +2144,7 @@
       return `
         <tr class="data-row report-detail-row">
           ${REPORT_COLUMNS.map(column => `
-            <td class="${column.type ? "num" : ""}">
+            <td class="${reportCellClass(detail[column.key], column.type)}">
               ${reportFormatValue(detail[column.key], column.type)}
             </td>
           `).join("")}
@@ -2129,7 +2165,7 @@
       return `
         <tr class="${grand ? "grand-total" : "total-row"}">
           ${REPORT_COLUMNS.map(column => `
-            <td class="${column.type ? "num" : ""}">
+            <td class="${reportCellClass(metrics[column.key], column.type)}">
               ${reportFormatValue(metrics[column.key], column.type)}
             </td>
           `).join("")}
