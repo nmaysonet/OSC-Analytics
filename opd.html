@@ -3,11 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Garda Operational Performance | OSC+ Analytics</title>
+  <title>Vended Operational Performance | OSC+ Analytics</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-storage.js"></script>
@@ -744,9 +745,18 @@
       flex-wrap:wrap;
     }
 
+    .opd-customer-filter {
+      min-width:220px;
+      width:240px;
+    }
+
     .opd-date-filter {
       min-width:190px;
       width:210px;
+    }
+
+    .opd-hidden {
+      display:none !important;
     }
 
     .opd-date-filter input {
@@ -1098,7 +1108,7 @@
 
     <a class="nav-item" href="index.html#report">OSC+ Analytics</a>
     <a class="nav-item" href="index.html#config">Customer Configuration</a>
-    <a class="nav-item active" href="opd.html">Garda Operational Performance</a>
+    <a class="nav-item active" href="opd.html">Vended Operational Performance</a>
 
     <div class="sidebar-truck">
       <svg width="150" height="76" viewBox="0 0 120 60" xmlns="http://www.w3.org/2000/svg">
@@ -1121,10 +1131,19 @@
   <main class="app">
     <header class="topbar">
       <div class="title">
-        <h1>Garda Operational Performance</h1>
+        <h1>Vended Operational Performance</h1>
       </div>
 
       <div class="opd-top-controls">
+        <div class="filter opd-customer-filter">
+          <label for="customer-select">Customer</label>
+          <select id="customer-select" aria-label="Select customer">
+            <option value="">Select Customer</option>
+            <option value="garda">Garda</option>
+            <option value="frontier">Frontier</option>
+            <option value="ferguson">Ferguson</option>
+          </select>
+        </div>
         <div class="filter opd-date-filter">
           <label for="report-date">Report Date</label>
           <input type="date" id="report-date" title="ECD calculation date">
@@ -1138,7 +1157,7 @@
 
       <div class="report-panel">
         <div class="panel-head">
-          <h2>Garda Operational Performance</h2>
+          <h2 id="customer-report-title">Select a Customer</h2>
           <span id="updated-pill" class="refresh">Connecting to Firebase...</span>
         </div>
 
@@ -1157,8 +1176,8 @@
             </div>
           </div>
 
-          <div class="opd-grid">
-            <section class="opd-card vr-main">
+          <div class="opd-grid" id="opd-grid">
+            <section class="opd-card vr-main" id="vended-repair-card">
               <div class="opd-table-wrap">
                 <table class="opd-table" id="vended-repair-table">
                   <thead><tr><th class="table-title-col">Vended Repair</th><th class="value-col">Prior Day</th><th class="value-col">Current Day</th><th class="value-col">Delta</th></tr></thead>
@@ -1167,7 +1186,7 @@
               </div>
             </section>
 
-            <section class="opd-card vr-ecd">
+            <section class="opd-card vr-ecd" id="vr-ecd-card">
               <div class="opd-table-wrap">
                 <table class="opd-table" id="vr-ecd-table">
                   <thead><tr><th class="table-title-col">VR ECD Bucket</th><th>Current State</th></tr></thead>
@@ -1176,7 +1195,7 @@
               </div>
             </section>
 
-            <section class="opd-card maintenance opd-full">
+            <section class="opd-card maintenance opd-full" id="maintenance-card">
               <div class="opd-table-wrap">
                 <table class="opd-table" id="maintenance-table">
                   <thead><tr><th class="table-title-col">Vended Maintenance</th><th class="value-col">Prior Day</th><th class="value-col">Current Day</th><th class="value-col">Delta</th><th class="wide-col"># Overdue Not Scheduled</th><th class="wide-col">Scheduling Gap</th></tr></thead>
@@ -1185,7 +1204,7 @@
               </div>
             </section>
 
-            <section class="opd-card vendor">
+            <section class="opd-card vendor" id="vendor-card">
               <div class="opd-table-wrap">
                 <table class="opd-table" id="vendor-table">
                   <thead><tr><th class="table-title-col">Vendor Coverage</th><th class="value-col">Prior Week</th></tr></thead>
@@ -1194,7 +1213,7 @@
               </div>
             </section>
 
-            <section class="opd-card ers">
+            <section class="opd-card ers" id="ers-card">
               <div class="opd-table-wrap">
                 <table class="opd-table" id="ers-table">
                   <thead><tr><th class="table-title-col">ERS Reporting</th><th class="value-col">Prior Week</th></tr></thead>
@@ -1204,7 +1223,7 @@
             </section>
           </div>
 
-          <div class="opd-footer"><strong>Workbook-derived:</strong> A single open order may count separately under PM, DOT, A/C, and LTS. ANNUAL INSPECTION routes to DOT and GARDA AC CHECK routes to A/C whenever those phrases appear anywhere inside the combined VRO task text, regardless of the order’s REPCLASS. PM remains driven by a PM REPCLASS and counts approved PM task names or other remaining PM-repclass task content after the separate DOT, A/C, LTS, and coolant phrases are removed. Repeated task phrases on one order are deduplicated by unique Order + program. All PM-related compliance calculations use Garda's formula: 1 - (distinct overdue VINs / total active VINs). # Overdue Not Scheduled is the hard count of unique overdue VINs that do not yet have every required PM or inspection fully scheduled. That includes VINs with no matching VRO, VROs still in Unassigned ROs, missing ECDs, or only part of the overdue work scheduled. Scheduling Gap is that same count divided by total active VINs. Coming-due VINs stay in the detailed scheduling report but do not reduce compliance or Scheduling Gap until they become overdue. Duplicate VIN interval rows use OR logic: if mileage or time/frequency reaches the threshold, the VIN is controlled by that requirement. OOS movement is calculated from the unique Unit # values marked OOS on the OOS GARDA tab for the approved 67 branches. Vehicles Returned to Service and New Units OOS are calculated for both days. Current Day compares today's OOS unit list to the prior snapshot; Prior Day compares the prior snapshot to the snapshot before it. Delta is Current Day minus Prior Day. Maintenance VRO matching is performed by normalized VIN across all orders. The PM, DOT, AC, and LTS source tabs establish the approved 67-site VIN population, so a VRO is not discarded when its customer branch code is different, malformed, or blank. PM is recognized from a PM REPCLASS or approved PM task text; ANNUAL INSPECTION, GARDA AC CHECK, and GARDA LTS SYSTEM CHECK are recognized anywhere in combined task text. Completed or Final Charges Submitted work counts only when its completion date is later than the requirement's LASTDONE date on the source tab. The report export includes separate PM Not Scheduled, DOT Not Scheduled, LTS PM Not Scheduled, and AC Not Scheduled tabs.</div>
+          <div class="opd-footer" id="methodology-footer"><strong>Workbook-derived:</strong> A single open order may count separately under PM, DOT, A/C, and LTS. ANNUAL INSPECTION routes to DOT and GARDA AC CHECK routes to A/C whenever those phrases appear anywhere inside the combined VRO task text, regardless of the order’s REPCLASS. PM remains driven by a PM REPCLASS and counts approved PM task names or other remaining PM-repclass task content after the separate DOT, A/C, LTS, and coolant phrases are removed. Repeated task phrases on one order are deduplicated by unique Order + program. All PM-related compliance calculations use Garda's formula: 1 - (distinct overdue VINs / total active VINs). # Overdue Not Scheduled is the hard count of unique overdue VINs that do not yet have every required PM or inspection fully scheduled. That includes VINs with no matching VRO, VROs still in Unassigned ROs, missing ECDs, or only part of the overdue work scheduled. Scheduling Gap is that same count divided by total active VINs. Coming-due VINs stay in the detailed scheduling report but do not reduce compliance or Scheduling Gap until they become overdue. Duplicate VIN interval rows use OR logic: if mileage or time/frequency reaches the threshold, the VIN is controlled by that requirement. OOS movement is calculated from the unique Unit # values marked OOS on the OOS GARDA tab for the approved 67 branches. Vehicles Returned to Service and New Units OOS are calculated for both days. Current Day compares today's OOS unit list to the prior snapshot; Prior Day compares the prior snapshot to the snapshot before it. Delta is Current Day minus Prior Day. Maintenance VRO matching is performed by normalized VIN across all orders. The PM, DOT, AC, and LTS source tabs establish the approved 67-site VIN population, so a VRO is not discarded when its customer branch code is different, malformed, or blank. PM is recognized from a PM REPCLASS or approved PM task text; ANNUAL INSPECTION, GARDA AC CHECK, and GARDA LTS SYSTEM CHECK are recognized anywhere in combined task text. Completed or Final Charges Submitted work counts only when its completion date is later than the requirement's LASTDONE date on the source tab. The report export includes separate PM Not Scheduled, DOT Not Scheduled, LTS PM Not Scheduled, and AC Not Scheduled tabs.</div>
         </div>
       </div>
     </section>
@@ -1214,8 +1233,12 @@
 const FIREBASE_CONFIG={apiKey:"AIzaSyCr3VAldI-pPCb7APx3rJAEZvf_nl0iz1g",authDomain:"workflow-dashboard-e6134.firebaseapp.com",databaseURL:"https://workflow-dashboard-e6134-default-rtdb.firebaseio.com",projectId:"workflow-dashboard-e6134",storageBucket:"workflow-dashboard-e6134.firebasestorage.app",messagingSenderId:"641710248116",appId:"1:641710248116:web:1546701879d573041447e1"};
 const MASTER_EMAIL="maintenance@ameritfleet.com";
 const WORKBOOK_PATH="master_workFLOWtest.xlsx";
-const SNAPSHOT_ROOT="operationalPerformanceTables/gardaSnapshots";
-const SUPPLEMENTAL_ROOT="operationalPerformanceTables/manualMetrics";
+let SNAPSHOT_ROOT="";
+let SUPPLEMENTAL_ROOT="";
+const ECD_SLIPPAGE_TRACKER_ROOT=
+  "operationalPerformanceTables/ecdSlippageTracker";
+const ECD_SLIPPAGE_LOG_ROOT=
+  "operationalPerformanceTables/ecdSlippageLog";
 const OPEN_STATUSES=new Set(["UNASSIGNED ROS","ESTIMATES","PENDING ESTIMATES","WORK IN PROGRESS"]);
 const COMPLETED_STATUSES=new Set(["COMPLETED","FINAL CHARGES SUBMITTED"]);
 const MAINTENANCE_STATUSES=new Set([
@@ -1228,12 +1251,155 @@ const APPROVED_BRANCHES=[
 ];
 const BRANCH_BY_CODE=new Map(APPROVED_BRANCHES.map(([name,code])=>[code.replace(/\D/g,""),{name,code}]));
 const APPROVED_CODES=new Set(BRANCH_BY_CODE.keys());
-const PROGRAMS=[
- {key:"pm",label:"PM Compliance"},
- {key:"dot",label:"DOT Compliance"},
- {key:"lts",label:"LTS PM Compliance"},
- {key:"ac",label:"A/C Compliance"}
+const GARDA_PROGRAMS=[
+ {key:"pm",label:"PM Compliance",shortLabel:"PM",sheetLabel:"PM Not Scheduled"},
+ {key:"dot",label:"DOT Compliance",shortLabel:"DOT",sheetLabel:"DOT Not Scheduled"},
+ {key:"lts",label:"LTS PM Compliance",shortLabel:"LTS PM",sheetLabel:"LTS PM Not Scheduled"},
+ {key:"ac",label:"A/C Compliance",shortLabel:"A/C",sheetLabel:"AC Not Scheduled"}
 ];
+
+const FRONTIER_PROGRAMS=[
+ {
+   key:"pm",
+   label:"PM Compliance",
+   shortLabel:"PM",
+   sheetLabel:"PM Not Scheduled",
+   sourcePath:"Frontier PM.xlsx",
+   sourceDescriptions:["STANDARD PM OR PM C"],
+   taskPhrases:["STANDARD PM OR PM C"]
+ },
+ {
+   key:"trailerPm",
+   label:"Trailer PM Compliance",
+   shortLabel:"Trailer PM",
+   sheetLabel:"Trailer PM Not Scheduled",
+   sourcePath:"Frontier PM.xlsx",
+   sourceDescriptions:["TRAILER PM"],
+   taskPhrases:["TRAILER PM"]
+ },
+ {
+   key:"dot",
+   label:"DOT Compliance",
+   shortLabel:"DOT",
+   sheetLabel:"DOT Not Scheduled",
+   sourcePath:"Frontier DOT(1).xlsx",
+   sourceDescriptions:["ANNUAL INSPECTION"],
+   taskPhrases:["ANNUAL INSPECTION"]
+ },
+ {
+   key:"ansi6",
+   label:"ANSI Aerial Inspection 6 MO Compliance",
+   shortLabel:"ANSI 6 MO",
+   sheetLabel:"ANSI 6 MO Not Scheduled",
+   sourcePath:"Frontier ANSI.xlsx",
+   sourceDescriptions:["FRONTIER AERIAL EQUIPMENT INSPECTION 6 MO"],
+   taskPhrases:["FRONTIER AERIAL EQUIPMENT INSPECTION 6 MO"]
+ },
+ {
+   key:"ansi12",
+   label:"ANSI Aerial Inspection 12 MO Compliance",
+   shortLabel:"ANSI 12 MO",
+   sheetLabel:"ANSI 12 MO Not Scheduled",
+   sourcePath:"Frontier ANSI.xlsx",
+   sourceDescriptions:["FRONTIER AERIAL EQUIPMENT INSPECTION 12 MO"],
+   taskPhrases:["FRONTIER AERIAL EQUIPMENT INSPECTION 12 MO"]
+ },
+ {
+   key:"ansi24",
+   label:"ANSI Aerial Inspection 24 MO Compliance",
+   shortLabel:"ANSI 24 MO",
+   sheetLabel:"ANSI 24 MO Not Scheduled",
+   sourcePath:"Frontier ANSI.xlsx",
+   sourceDescriptions:["FRONTIER AERIAL EQUIPMENT INSPECTION 24 MO"],
+   taskPhrases:["FRONTIER AERIAL EQUIPMENT INSPECTION 24 MO"]
+ },
+ {
+   key:"state",
+   label:"State Safety Inspection Compliance",
+   shortLabel:"State Inspection",
+   sheetLabel:"State Insp Not Scheduled",
+   sourcePath:"Frontier State Inspection.xlsx",
+   sourceDescriptions:["STATE SAFETY INSPECTION"],
+   taskPhrases:["STATE SAFETY INSPECTION"]
+ }
+];
+
+const FERGUSON_PROGRAMS=[
+ {
+   key:"pm",
+   label:"PM Compliance",
+   shortLabel:"PM",
+   sheetLabel:"PM Not Scheduled",
+   sourcePath:"PM Currency %.xlsx",
+   sourceFilterHeader:"SHOPID_6CHAR",
+   sourceFilterValue:"000760",
+   sourceLatestDateHeader:"WEEKENDING",
+   taskPhrases:[
+     "STANDARD PM OR PM C",
+     "MODULE - REGENERATION"
+   ],
+   dueDateHeaders:[
+     "MIN_COMPLETE_DUEDATE",
+     "COMPLETE_DUEDATE_TEST"
+   ]
+ },
+ {
+   key:"dot",
+   label:"DOT Compliance",
+   shortLabel:"DOT",
+   sheetLabel:"DOT Not Scheduled",
+   sourcePath:"Ferguson DOT.xlsx",
+   sourceFilterHeader:"SHOPID",
+   sourceFilterValue:"000760",
+   sourceDescriptions:["ANNUAL INSPECTION"],
+   taskPhrases:["ANNUAL INSPECTION"]
+ },
+ {
+   key:"bit90",
+   label:"90 Day BIT Inspection Compliance",
+   shortLabel:"90 Day BIT",
+   sheetLabel:"90 Day BIT Not Scheduled",
+   sourcePath:"Ferguson DOT.xlsx",
+   sourceFilterHeader:"SHOPID",
+   sourceFilterValue:"000760",
+   sourceDescriptions:["90 DAY BIT INSPECTION"],
+   taskPhrases:["90 DAY BIT INSPECTION"]
+ }
+];
+
+let PROGRAMS=[];
+let activeCustomerKey="";
+let activeCustomerProfile=null;
+
+const CUSTOMER_PROFILES={
+  garda:{
+    key:"garda",
+    label:"Garda",
+    customerToken:"GARDA",
+    programs:GARDA_PROGRAMS,
+    snapshotRoot:"operationalPerformanceTables/gardaSnapshots",
+    supplementalRoot:"operationalPerformanceTables/manualMetrics",
+    showGardaSections:true
+  },
+  frontier:{
+    key:"frontier",
+    label:"Frontier",
+    customerToken:"FRONTIER",
+    programs:FRONTIER_PROGRAMS,
+    snapshotRoot:"operationalPerformanceTables/frontierSnapshots",
+    supplementalRoot:"",
+    showGardaSections:false
+  },
+  ferguson:{
+    key:"ferguson",
+    label:"Ferguson",
+    customerToken:"FERGUSON",
+    programs:FERGUSON_PROGRAMS,
+    snapshotRoot:"operationalPerformanceTables/fergusonSnapshots",
+    supplementalRoot:"",
+    showGardaSections:false
+  }
+};
 const PM_TASK_PHRASES=[
  "GARDA PB330 PM LEVEL B",
  "GARDA E350 PM LEVEL B",
@@ -1243,10 +1409,16 @@ const PM_TASK_PHRASES=[
 ];
 const MAINTENANCE_REQUIREMENT_LABELS={
  pm:"PM",
+ trailerPm:"Trailer PM",
  dot:"DOT",
  ac:"A/C",
  lts:"LTS System Check",
- coolant:"Coolant System Check"
+ coolant:"Coolant System Check",
+ ansi6:"ANSI Aerial Inspection 6 MO",
+ ansi12:"ANSI Aerial Inspection 12 MO",
+ ansi24:"ANSI Aerial Inspection 24 MO",
+ state:"State Safety Inspection",
+ bit90:"90 Day BIT Inspection"
 };
 const ECD_ROWS=[
  {key:"repairOrders",label:"# Repair Orders"},
@@ -2608,7 +2780,7 @@ function sourceDeltaCell(reportedDelta,prior,current,type="number"){
   }
   return `<td class="num ${cls}"><strong>${text}</strong></td>`;
 }
-function mergeComputedAndSupplemental(computed,supplemental,prior,priorPrior){
+function mergeGardaComputedAndSupplemental(computed,supplemental,prior,priorPrior){
   const maintenance={};
   PROGRAMS.forEach(program=>{
     const source=computed.maintenance[program.key];
@@ -3195,7 +3367,7 @@ function overdueNotScheduledCell(projection){
 
   return `<td class="num ${isBlank(value)?"empty":""}" title="${escapeHtml(title)}">
     <strong>${formatValue(value,"number")}</strong>
-    <span class="cell-note">PMs/inspections to schedule</span>
+    <span class="cell-note">services/inspections to schedule</span>
   </td>`;
 }
 function projectionCell(value,projection,kind){
@@ -3288,7 +3460,7 @@ function renderMaintenance(){
   $("#maintenance-body").innerHTML=PROGRAMS.map((program,index)=>{
     const metric=dashboardData.maintenance[program.key];
     const missingNote=isBlank(metric.compliance)
-      ?'<span class="cell-note">Compliance value not present on GARDA FLASH</span>'
+      ?'<span class="cell-note">Compliance value is not available from the selected source</span>'
       :'';
 
     const header=`<tr class="${index?"group-start":""}">
@@ -3385,7 +3557,7 @@ function renderErs(){
     </tr>`;
   }).join("");
 }
-function renderAll(){
+function renderGardaAll(){
   if(!dashboardData)return;
   renderVendedRepair();renderVrEcd();renderMaintenance();renderVendor();renderErs();
   const warnings=[...(dashboardData.warnings||[])];
@@ -3892,17 +4064,11 @@ function buildEcdDetailRows(detailData){
         :"Not Scheduled";
 
     records.push({
-      sortProgram:{
-        pm:1,
-        dot:2,
-        ac:3,
-        lts:4,
-        coolant:5
-      }[item.program]??9,
+      sortProgram:programSortIndex(item.program),
       sortBucket:EXPORT_BUCKET_ORDER[item.bucket]??99,
       sortDate:parseDate(item.due)?.getTime()||0,
       row:[
-        EXPORT_PROGRAM_LABELS[item.program]||item.program,
+        programDisplayLabel(item.program),
         EXPORT_BUCKET_LABELS[item.bucket]||item.bucket,
         item.vin||"",
         item.order,
@@ -4372,8 +4538,17 @@ function buildVrNotScheduledRows(detailData){
   return [headers,...rows];
 }
 
-function exportAllTables(){
+async function exportGardaTables(){
   if(!dashboardData)return;
+
+  const [
+    slippageHistory,
+    trendHistory
+  ]=await Promise.all([
+    loadEcdSlippageHistory(),
+    loadMaintenanceTrendHistory()
+  ]);
+
   const wb=XLSX.utils.book_new();
 
   // Vended Repair
@@ -4754,17 +4929,2953 @@ function exportAllTables(){
     "OOS Movement"
   );
 
-  XLSX.writeFile(
+  appendEcdSlippageSheet(
     wb,
-    `Garda_Operational_Performance_${$("#report-date").value}.xlsx`
+    slippageHistory
+  );
+
+  await writeWorkbookWithTrendCharts(
+    wb,
+    `Garda_Vended_Operational_Performance_${$("#report-date").value}.xlsx`,
+    trendHistory
   );
 }
 
-async function initialize(){if(!firebase.apps.length)firebase.initializeApp(FIREBASE_CONFIG);db=firebase.database();firebase.auth().onAuthStateChanged(user=>{if(user){$("#login-overlay").style.display="none";loadFromFirebase();}else{$("#login-overlay").style.display="flex";setStatus("loading","Waiting for Firebase authentication","Enter the OSC+ password to load the live workbook.");}});}
+
+function programDefinition(key){
+  return PROGRAMS.find(program=>program.key===key)||null;
+}
+function programDisplayLabel(key){
+  const program=programDefinition(key);
+  return program?.shortLabel||
+    MAINTENANCE_REQUIREMENT_LABELS[key]||
+    EXPORT_PROGRAM_LABELS[key]||
+    key||
+    "Maintenance";
+}
+function programSortIndex(key){
+  const index=PROGRAMS.findIndex(program=>program.key===key);
+  return index<0?99:index+1;
+}
+function normalizeShopId(value){
+  const digits=clean(value).replace(/\D/g,"");
+  return digits?digits.padStart(6,"0"):"";
+}
+function activeSourcePaths(){
+  return [...new Set(
+    PROGRAMS
+      .map(program=>program.sourcePath)
+      .filter(Boolean)
+  )];
+}
+function customerMethodology(){
+  if(activeCustomerKey==="garda"){
+    return `<strong>Workbook-derived:</strong> A single open order may count separately under PM, DOT, A/C, and LTS. ANNUAL INSPECTION routes to DOT and GARDA AC CHECK routes to A/C whenever those phrases appear anywhere inside the combined VRO task text, regardless of the order’s REPCLASS. PM remains driven by a PM REPCLASS and counts approved PM task names or other remaining PM-repclass task content after the separate DOT, A/C, LTS, and coolant phrases are removed. Repeated task phrases on one order are deduplicated by unique Order + program. All PM-related compliance calculations use Garda's formula: 1 - (distinct overdue VINs / total active VINs). # Overdue Not Scheduled is the hard count of unique overdue VINs that do not yet have every required PM or inspection fully scheduled. Scheduling Gap is that same count divided by total active VINs. Coming-due VINs stay in the detailed scheduling report but do not reduce compliance or Scheduling Gap until they become overdue. Completed or Final Charges Submitted work is excluded from active ECD buckets.`;
+  }
+
+  if(activeCustomerKey==="frontier"){
+    return `<strong>Frontier workbook sources:</strong> Frontier PM.xlsx, Frontier DOT(1).xlsx, Frontier ANSI.xlsx, and Frontier State Inspection.xlsx are loaded directly from Firebase Storage. Compliance is calculated by unique VIN as 1 - (unique overdue VINs / total unique VINs). ANSI represents Frontier aerial-equipment inspections and is separated into 6-, 12-, and 24-month categories. VRO matching is based on the task name anywhere in the combined task text, not the component code. Supported task names are Standard PM OR PM C, TRAILER PM, ANNUAL INSPECTION, the three FRONTIER AERIAL EQUIPMENT INSPECTION intervals, and State Safety Inspection.`;
+  }
+
+  if(activeCustomerKey==="ferguson"){
+    return `<strong>Ferguson workbook sources:</strong> PM Currency %.xlsx includes only SHOPID_6CHAR 000760 and uses only the latest WEEKENDING in the file. Ferguson DOT.xlsx includes only SHOPID 000760 and is separated into Annual Inspection and 90 Day BIT Inspection compliance. A VIN is overdue when DUEPERCENT is 1.00 or greater. PM VRO matching recognizes Standard PM OR PM C and Module - Regeneration. DOT matching recognizes ANNUAL INSPECTION, while BIT matching recognizes 90 DAY BIT INSPECTION. Compliance is calculated by unique VIN as 1 - (unique overdue VINs / total unique VINs).`;
+  }
+
+  return `<strong>Select a customer</strong> to load its Firebase Storage workbooks.`;
+}
+function applyCustomerLayout(){
+  const selected=Boolean(activeCustomerProfile);
+  const isGarda=activeCustomerKey==="garda";
+
+  $("#customer-report-title").textContent=selected
+    ?`${activeCustomerProfile.label} Operational Performance`
+    :"Select a Customer";
+
+  $("#opd-grid").classList.toggle("opd-hidden",!selected);
+  $("#vended-repair-card").classList.toggle("opd-hidden",!isGarda);
+  $("#vr-ecd-card").classList.toggle("opd-hidden",!isGarda);
+  $("#vendor-card").classList.toggle("opd-hidden",!isGarda);
+  $("#ers-card").classList.toggle("opd-hidden",!isGarda);
+  $("#maintenance-card").classList.toggle("opd-hidden",!selected);
+
+  $("#methodology-footer").innerHTML=customerMethodology();
+
+  if(!selected){
+    $("#branch-pill").textContent="Customer not selected";
+    $("#branch-pill").className="opd-pill";
+    $("#order-pill").textContent="Open ROs —";
+    $("#order-pill").className="opd-pill";
+    $("#updated-pill").textContent="Select a customer";
+    $("#updated-pill").className="refresh";
+  }
+}
+function selectCustomer(customerKey){
+  if(supplementalListenerRef){
+    supplementalListenerRef.off();
+    supplementalListenerRef=null;
+  }
+
+  activeCustomerKey=customerKey||"";
+  activeCustomerProfile=CUSTOMER_PROFILES[activeCustomerKey]||null;
+  PROGRAMS=activeCustomerProfile
+    ?activeCustomerProfile.programs.map(program=>({...program}))
+    :[];
+
+  SNAPSHOT_ROOT=activeCustomerProfile?.snapshotRoot||"";
+  SUPPLEMENTAL_ROOT=activeCustomerProfile?.supplementalRoot||"";
+
+  lastWorkbookBuffer=null;
+  lastParsed=null;
+  dashboardData=null;
+  supplementalData={};
+  priorSnapshot=null;
+  priorPriorSnapshot=null;
+
+  $("#export-btn").disabled=true;
+  showWarning([]);
+  applyCustomerLayout();
+
+  if(!activeCustomerProfile){
+    setStatus(
+      "loading",
+      "Select a customer",
+      "Choose Garda, Frontier, or Ferguson to load the applicable Firebase Storage workbooks."
+    );
+    return;
+  }
+
+  setStatus(
+    "loading",
+    `Waiting to load ${activeCustomerProfile.label}`,
+    "The selected customer will load after Firebase authentication is confirmed."
+  );
+
+  if(firebase.auth().currentUser){
+    loadFromFirebase();
+  }
+}
+function maintenanceTaskTypes(task,service){
+  const text=upper(task);
+  const types=new Set();
+
+  if(activeCustomerKey!=="garda"){
+    PROGRAMS.forEach(program=>{
+      if(
+        (program.taskPhrases||[])
+          .some(phrase=>text.includes(upper(phrase)))
+      ){
+        types.add(program.key);
+      }
+    });
+
+    return [...types];
+  }
+
+  const hasPmTask=PM_TASK_PHRASES.some(
+    phrase=>text.includes(phrase)
+  );
+
+  if(text.includes("ANNUAL INSPECTION")){
+    types.add("dot");
+  }
+  if(text.includes("GARDA AC CHECK")){
+    types.add("ac");
+  }
+  if(text.includes("GARDA LTS SYSTEM CHECK")){
+    types.add("lts");
+  }
+  if(text.includes("GARDA COOLANT SYSTEM CHECK")){
+    types.add("coolant");
+  }
+  if(service==="PM"||hasPmTask){
+    types.add("pm");
+  }
+
+  return [...types];
+}
+function latestRequirementLastDone(unit,requirement){
+  const dates=(unit?.rows||[])
+    .filter(row=>row.requirement===requirement)
+    .map(row=>
+      parseDate(row.lastDone)||
+      parseDate(row.completionReference)
+    )
+    .filter(Boolean);
+
+  if(!dates.length){
+    return null;
+  }
+
+  return new Date(
+    Math.max(...dates.map(date=>date.getTime()))
+  );
+}
+function completedAfterSourceLastDone(item,unit,requirement){
+  if(!item?.completed){
+    return false;
+  }
+
+  const completedDate=parseDate(item.completedDate);
+  if(!completedDate){
+    return false;
+  }
+
+  const referenceDate=latestRequirementLastDone(
+    unit,
+    requirement
+  );
+
+  /*
+    Garda source tabs contain LASTDONE. External sources generally
+    provide a due date instead. When neither exists, do not use a
+    completed external order to remove a VIN from the overdue count.
+  */
+  if(!referenceDate){
+    return activeCustomerKey==="garda";
+  }
+
+  return completedDate>referenceDate;
+}
+function firstWorksheetAoa(buffer){
+  const workbook=XLSX.read(buffer,{
+    type:"array",
+    cellDates:true
+  });
+  const sheetName=workbook.SheetNames[0]||"";
+  return {
+    workbook,
+    sheetName,
+    aoa:sheetName
+      ?XLSX.utils.sheet_to_json(
+          workbook.Sheets[sheetName],
+          {header:1,defval:"",raw:true}
+        )
+      :[]
+  };
+}
+function parseExternalComplianceSource(
+  buffer,
+  program,
+  warnings
+){
+  if(!buffer){
+    warnings.push(
+      `${program.sourcePath}: workbook was not loaded.`
+    );
+    return null;
+  }
+
+  const source=firstWorksheetAoa(buffer);
+  const aoa=source.aoa;
+
+  if(!aoa.length){
+    warnings.push(
+      `${program.sourcePath}: no worksheet data was found.`
+    );
+    return null;
+  }
+
+  const header=aoa[0]||[];
+  const vinIndex=headerIndex(header,["VIN"],-1);
+  const descriptionIndex=headerIndex(
+    header,
+    ["DESCRIP","CMPCODEDESC","CMP CODE DESC","COMPCODE_DESC"],
+    -1
+  );
+  const duePercentIndex=headerIndex(
+    header,
+    ["DUEPERCENT","DUE PERCENT"],
+    -1
+  );
+  const dueCategoryIndex=headerIndex(
+    header,
+    ["PM DUE CATEGORY","DUE CATEGORY"],
+    -1
+  );
+  const dueDateIndex=headerIndex(
+    header,
+    program.dueDateHeaders||[
+      "DUEDATE",
+      "DUE DATE",
+      "DUEDAT"
+    ],
+    -1
+  );
+  const intervalIndex=headerIndex(
+    header,
+    ["INTERVAL"],
+    -1
+  );
+  const meterTypeIndex=headerIndex(
+    header,
+    ["METERTYPE","METER TYPE"],
+    -1
+  );
+  const locationIndex=headerIndex(
+    header,
+    [
+      "CUSTOMERLOCATION",
+      "CUSTLOC",
+      "F_SHOPLOCATION",
+      "SHOPNAME"
+    ],
+    -1
+  );
+  const unitIndex=headerIndex(
+    header,
+    ["UNIT","UNITNUMBER","UNIT NUMBER"],
+    -1
+  );
+  const sourceFilterIndex=program.sourceFilterHeader
+    ?headerIndex(
+        header,
+        [program.sourceFilterHeader],
+        -1
+      )
+    :-1;
+  const latestDateIndex=program.sourceLatestDateHeader
+    ?headerIndex(
+        header,
+        [program.sourceLatestDateHeader],
+        -1
+      )
+    :-1;
+
+  if(vinIndex<0||duePercentIndex<0){
+    throw new Error(
+      `${program.sourcePath}: VIN or DUEPERCENT column was not found.`
+    );
+  }
+
+  if(
+    program.sourceFilterHeader&&
+    sourceFilterIndex<0
+  ){
+    throw new Error(
+      `${program.sourcePath}: ${program.sourceFilterHeader} column was not found.`
+    );
+  }
+
+  if(
+    program.sourceLatestDateHeader&&
+    latestDateIndex<0
+  ){
+    throw new Error(
+      `${program.sourcePath}: ${program.sourceLatestDateHeader} column was not found.`
+    );
+  }
+
+  let latestSourceDate=null;
+
+  if(latestDateIndex>=0){
+    for(let rowIndex=1;rowIndex<aoa.length;rowIndex++){
+      const row=aoa[rowIndex]||[];
+
+      if(sourceFilterIndex>=0){
+        const rowShopId=normalizeShopId(
+          row[sourceFilterIndex]
+        );
+
+        if(
+          rowShopId!==
+          normalizeShopId(program.sourceFilterValue)
+        ){
+          continue;
+        }
+      }
+
+      const rowDate=parseDate(
+        row[latestDateIndex]
+      );
+
+      if(
+        rowDate&&
+        (
+          !latestSourceDate||
+          rowDate>latestSourceDate
+        )
+      ){
+        latestSourceDate=rowDate;
+      }
+    }
+  }
+
+  const allowedDescriptions=new Set(
+    (program.sourceDescriptions||[])
+      .map(upper)
+  );
+
+  const units=new Map();
+  let sourceRows=0;
+  let excludedByFilter=0;
+  let excludedByDescription=0;
+  let blankVinRows=0;
+
+  for(let rowIndex=1;rowIndex<aoa.length;rowIndex++){
+    const row=aoa[rowIndex]||[];
+
+    if(sourceFilterIndex>=0){
+      const rowShopId=normalizeShopId(
+        row[sourceFilterIndex]
+      );
+      if(
+        rowShopId!==
+        normalizeShopId(program.sourceFilterValue)
+      ){
+        excludedByFilter++;
+        continue;
+      }
+    }
+
+    if(latestSourceDate&&latestDateIndex>=0){
+      const rowDate=parseDate(
+        row[latestDateIndex]
+      );
+
+      if(
+        !rowDate||
+        rowDate.getTime()!==
+          latestSourceDate.getTime()
+      ){
+        excludedByFilter++;
+        continue;
+      }
+    }
+
+    const description=descriptionIndex>=0
+      ?upper(row[descriptionIndex])
+      :"";
+
+    if(
+      allowedDescriptions.size&&
+      !allowedDescriptions.has(description)
+    ){
+      excludedByDescription++;
+      continue;
+    }
+
+    const vin=normalizedVin(row[vinIndex]);
+
+    if(!vin){
+      if(row.some(value=>!isBlank(value))){
+        blankVinRows++;
+      }
+      continue;
+    }
+
+    const duePercentRaw=Number(
+      row[duePercentIndex]
+    );
+    const duePercent=Number.isFinite(duePercentRaw)
+      ?duePercentRaw
+      :null;
+
+    const overdue=
+      duePercent!==null&&
+      duePercent>=1;
+
+    const comingDue=
+      duePercent!==null&&
+      duePercent>=0.85&&
+      duePercent<1;
+
+    const dueCategory=dueCategoryIndex>=0
+      ?upper(row[dueCategoryIndex])
+      :overdue
+        ?"OVERDUE"
+        :comingDue
+          ?"COMING SOON"
+          :"CURRENT";
+
+    const dueDate=dueDateIndex>=0
+      ?row[dueDateIndex]
+      :null;
+
+    if(!units.has(vin)){
+      units.set(vin,{
+        vin,
+        branchCode:"",
+        branchName:
+          locationIndex>=0
+            ?clean(row[locationIndex])
+            :"",
+        shopName:
+          locationIndex>=0
+            ?clean(row[locationIndex])
+            :"",
+        unitNumber:
+          unitIndex>=0
+            ?clean(row[unitIndex])
+            :"",
+        rowCount:0,
+        overdueRequirements:new Set(),
+        comingDueRequirements:new Set(),
+        dueRequirements:new Set(),
+        rows:[]
+      });
+    }
+
+    const unit=units.get(vin);
+    unit.rowCount++;
+    unit.rows.push({
+      requirement:program.key,
+      description,
+      interval:
+        intervalIndex>=0
+          ?row[intervalIndex]
+          :null,
+      meterType:
+        meterTypeIndex>=0
+          ?clean(row[meterTypeIndex])
+          :"",
+      dueCategory,
+      duePercent,
+      dueDate,
+      lastDone:null,
+      completionReference:dueDate,
+      overdue,
+      comingDue
+    });
+
+    if(overdue){
+      unit.overdueRequirements.add(program.key);
+      unit.dueRequirements.add(program.key);
+    }else if(comingDue){
+      unit.comingDueRequirements.add(program.key);
+      unit.dueRequirements.add(program.key);
+    }
+
+    sourceRows++;
+  }
+
+  const serializedUnits={};
+  let sourceCompliantUnits=0;
+  let sourceComingDueUnits=0;
+  let sourceAttentionUnits=0;
+  let duplicateVinCount=0;
+
+  units.forEach((unit,vin)=>{
+    if(unit.rowCount>1){
+      duplicateVinCount++;
+    }
+
+    if(!unit.overdueRequirements.size){
+      sourceCompliantUnits++;
+    }
+
+    if(
+      !unit.overdueRequirements.size&&
+      unit.comingDueRequirements.size
+    ){
+      sourceComingDueUnits++;
+    }
+
+    if(unit.dueRequirements.size){
+      sourceAttentionUnits++;
+    }
+
+    serializedUnits[vin]={
+      branchCode:unit.branchCode,
+      branchName:unit.branchName,
+      shopName:unit.shopName,
+      unitNumber:unit.unitNumber,
+      rowCount:unit.rowCount,
+      overdueRequirements:[
+        ...unit.overdueRequirements
+      ],
+      comingDueRequirements:[
+        ...unit.comingDueRequirements
+      ],
+      dueRequirements:[
+        ...unit.dueRequirements
+      ],
+      rows:unit.rows
+    };
+  });
+
+  if(blankVinRows){
+    warnings.push(
+      `${program.sourcePath}: ${blankVinRows} populated row(s) had no VIN and were excluded.`
+    );
+  }
+
+  if(
+    program.sourceFilterHeader&&
+    !sourceRows
+  ){
+    warnings.push(
+      `${program.sourcePath}: no rows matched ${program.sourceFilterHeader} ${program.sourceFilterValue}.`
+    );
+  }
+
+  return {
+    sheetName:source.sheetName,
+    sourcePath:program.sourcePath,
+    program:program.key,
+    sourceRows,
+    excludedByFilter,
+    excludedByDescription,
+    latestSourceDate:
+      latestSourceDate
+        ?localDateKey(latestSourceDate)
+        :null,
+    totalUnits:units.size,
+    sourceCompliantUnits,
+    sourceNoncompliantUnits:
+      units.size-sourceCompliantUnits,
+    sourceComingDueUnits,
+    sourceAttentionUnits,
+    duplicateVinCount,
+    units:serializedUnits
+  };
+}
+function parseExternalVroRows(
+  aoa,
+  repclassMap,
+  reportDate,
+  warnings,
+  maintenanceVinScope,
+  profile
+){
+  const maintenanceItems=new Map();
+  const activeProgramKeys=new Set(
+    PROGRAMS.map(program=>program.key)
+  );
+  let eligibleRows=0;
+  let missingOrder=0;
+
+  for(let rowIndex=1;rowIndex<aoa.length;rowIndex++){
+    const row=aoa[rowIndex]||[];
+    const customer=clean(row[0]);
+
+    if(
+      !upper(customer).includes(
+        upper(profile.customerToken)
+      )
+    ){
+      continue;
+    }
+
+    const vin=normalizedVin(row[2]);
+
+    if(
+      !vin||
+      !maintenanceVinScope.has(vin)
+    ){
+      continue;
+    }
+
+    const status=upper(row[14]);
+
+    if(!MAINTENANCE_STATUSES.has(status)){
+      continue;
+    }
+
+    const order=clean(row[7]);
+
+    if(!order){
+      missingOrder++;
+      continue;
+    }
+
+    const repclass=upper(row[4]);
+    const service=
+      repclassMap.get(repclass)||
+      "UNMAPPED";
+    const task=clean(row[5]);
+
+    const matchedPrograms=
+      maintenanceTaskTypes(task,service)
+        .filter(programKey=>
+          activeProgramKeys.has(programKey)
+        );
+
+    if(!matchedPrograms.length){
+      continue;
+    }
+
+    eligibleRows++;
+
+    const sourceLocation=
+      maintenanceVinScope.get(vin)||{};
+
+    matchedPrograms.forEach(program=>{
+      const itemKey=`${order}|${program}`;
+      const branchCode=extractBranchCode(customer);
+
+      const item={
+        itemKey,
+        order,
+        program,
+        vin,
+        customer,
+        branchCode,
+        branchName:
+          sourceLocation.branchName||
+          customer,
+        sourceShopName:
+          sourceLocation.shopName||
+          "",
+        vroBranchCode:branchCode,
+        repclass,
+        service,
+        task,
+        due:row[11],
+        status,
+        opened:row[8],
+        completedDate:row[15]
+      };
+
+      maintenanceItems.set(
+        itemKey,
+        mergeMaintenanceItem(
+          maintenanceItems.get(itemKey),
+          item
+        )
+      );
+    });
+  }
+
+  if(missingOrder){
+    warnings.push(
+      `${missingOrder} matching ${profile.label} VRO row(s) were excluded because the Order field was blank.`
+    );
+  }
+
+  const maintenanceList=[
+    ...maintenanceItems.values()
+  ];
+
+  maintenanceList.forEach(item=>{
+    item.scheduled=
+      OPEN_STATUSES.has(item.status)&&
+      item.status!=="UNASSIGNED ROS"&&
+      Boolean(parseDate(item.due));
+
+    item.completed=
+      COMPLETED_STATUSES.has(item.status)&&
+      Boolean(parseDate(item.completedDate));
+
+    const bucketDate=item.scheduled
+      ?item.due
+      :item.completed
+        ?item.completedDate
+        :item.due;
+
+    item.bucket=ecdBucket(
+      bucketDate,
+      reportDate
+    );
+  });
+
+  const uniqueOpenOrders=new Set(
+    maintenanceList
+      .filter(item=>OPEN_STATUSES.has(item.status))
+      .map(item=>item.order)
+  ).size;
+
+  return {
+    orders:[],
+    maintenanceItems:maintenanceList,
+    eligibleRows,
+    duplicateRows:Math.max(
+      0,
+      eligibleRows-maintenanceList.length
+    ),
+    unmapped:0,
+    maintenanceRowsMatchedByVin:0,
+    uniqueOpenOrders
+  };
+}
+function emptyCustomerVendedRepair(){
+  return {
+    current:{
+      vendedSites:null,
+      branches:null,
+      units:null,
+      oos:null,
+      useful:null,
+      underBranches:null,
+      underUnits:null,
+      underOos:null,
+      underUseful:null,
+      returnedToService:null,
+      newUnitsOos:null,
+      oosUnitIds:[]
+    },
+    prior:{}
+  };
+}
+function parseExternalCustomer(
+  buffers,
+  profile
+){
+  const warnings=[];
+  const masterWorkbook=XLSX.read(
+    buffers.master,
+    {type:"array",cellDates:true}
+  );
+
+  const vro=sheetAoa(
+    masterWorkbook,
+    name=>name.includes("vro export")
+  );
+  const rep=sheetAoa(
+    masterWorkbook,
+    name=>
+      name.includes("repclass")||
+      name.includes("rep class")
+  );
+
+  if(!vro.aoa.length){
+    throw new Error(
+      "VRO Export tab was not found in master_workFLOWtest.xlsx."
+    );
+  }
+
+  if(!rep.aoa.length){
+    throw new Error(
+      "REPCLASS tab was not found in master_workFLOWtest.xlsx."
+    );
+  }
+
+  validateHeader(
+    vro.aoa,
+    [
+      [0,"CUSTOMER"],
+      [2,"VEHICLE"],
+      [4,"TYPE"],
+      [5,"TASK"],
+      [7,"ORDER"],
+      [11,"UNIT DUE DATE"],
+      [14,"STATUS"]
+    ],
+    vro.name,
+    warnings
+  );
+
+  const complianceSources={};
+
+  PROGRAMS.forEach(program=>{
+    complianceSources[program.key]=
+      parseExternalComplianceSource(
+        buffers.sources?.[program.sourcePath],
+        program,
+        warnings
+      );
+  });
+
+  const maintenanceVinScope=
+    buildMaintenanceVinScope(
+      complianceSources
+    );
+
+  const repclassMap=buildRepclassMap(rep.aoa);
+
+  const vroResult=parseExternalVroRows(
+    vro.aoa,
+    repclassMap,
+    selectedReportDate(),
+    warnings,
+    maintenanceVinScope,
+    profile
+  );
+
+  const maintenance={};
+
+  PROGRAMS.forEach(program=>{
+    const source=
+      complianceSources[program.key]||
+      null;
+
+    const compliance=
+      source?.totalUnits
+        ?Math.max(
+            0,
+            Math.min(
+              1,
+              1-(
+                source.sourceNoncompliantUnits/
+                source.totalUnits
+              )
+            )
+          )
+        :null;
+
+    const projection=projectedCompliance(
+      program.key,
+      compliance,
+      source,
+      vroResult.maintenanceItems
+    );
+
+    maintenance[program.key]={
+      ecd:summarizeMaintenanceItems(
+        vroResult.maintenanceItems,
+        program.key
+      ),
+      compliance,
+      priorCompliance:null,
+      reportedDelta:null,
+      achievable:projection?.achievable??null,
+      gap:projection?.gap??null,
+      projection
+    };
+  });
+
+  return {
+    metadata:{
+      loadedAt:new Date().toISOString(),
+      reportDate:$("#report-date").value,
+      customerKey:profile.key,
+      customerLabel:profile.label,
+      workbookSheets:masterWorkbook.SheetNames,
+      sourceFiles:activeSourcePaths(),
+      eligibleRows:vroResult.eligibleRows,
+      uniqueOpenOrders:vroResult.uniqueOpenOrders,
+      uniqueMaintenanceItems:
+        vroResult.maintenanceItems.length,
+      duplicateRows:vroResult.duplicateRows,
+      unmappedRows:vroResult.unmapped,
+      maintenanceRowsMatchedByVin:0,
+      activeVinCount:maintenanceVinScope.size
+    },
+    vendedRepair:emptyCustomerVendedRepair(),
+    vrEcd:emptyEcd(),
+    maintenance,
+    vendor:{
+      total:null,
+      ers:null,
+      repair:null,
+      pm:null,
+      belowCoverage:null,
+      top:[],
+      prior:{}
+    },
+    ers:{
+      current:{},
+      prior:{},
+      reportedDelta:{}
+    },
+    detailData:{
+      reportDate:$("#report-date").value,
+      customerKey:profile.key,
+      vrOrders:[],
+      maintenanceItems:
+        vroResult.maintenanceItems,
+      complianceSources,
+      oosUnits:[]
+    },
+    warnings
+  };
+}
+function mergeComputedAndSupplemental(
+  computed,
+  supplemental,
+  prior,
+  priorPrior
+){
+  if(activeCustomerKey==="garda"){
+    return mergeGardaComputedAndSupplemental(
+      computed,
+      supplemental,
+      prior,
+      priorPrior
+    );
+  }
+
+  const maintenance={};
+
+  PROGRAMS.forEach(program=>{
+    const source=computed.maintenance[program.key];
+    const priorCompliance=firstMetric(
+      source.priorCompliance,
+      safePath(
+        prior,
+        `maintenance.${program.key}.compliance`,
+        null
+      )
+    );
+
+    maintenance[program.key]={
+      ...source,
+      priorCompliance,
+      reportedDelta:
+        !isBlank(source.compliance)&&
+        !isBlank(priorCompliance)
+          ?Number(source.compliance)-
+            Number(priorCompliance)
+          :null,
+      priorEcd:safePath(
+        prior,
+        `maintenance.${program.key}.ecd`,
+        null
+      )
+    };
+  });
+
+  return {
+    ...computed,
+    maintenance,
+    detailData:{
+      ...(computed.detailData||{}),
+      movementPriorOosIds:[]
+    }
+  };
+}
+function renderAll(){
+  if(!dashboardData){
+    return;
+  }
+
+  if(activeCustomerKey==="garda"){
+    renderGardaAll();
+    return;
+  }
+
+  renderMaintenance();
+  showWarning(dashboardData.warnings||[]);
+
+  $("#branch-pill").textContent=
+    `${Number(
+      dashboardData.metadata.activeVinCount||0
+    ).toLocaleString()} active VINs`;
+  $("#branch-pill").className="opd-pill good";
+}
+function maintenanceRequirementLabel(requirement){
+  return programDisplayLabel(requirement);
+}
+async function fetchStorageBuffer(path){
+  const configured=
+    firebase.app().options.storageBucket||"";
+  const buckets=[
+    ...new Set(
+      [
+        configured,
+        "workflow-dashboard-e6134.firebasestorage.app",
+        "workflow-dashboard-e6134.appspot.com"
+      ].filter(Boolean)
+    )
+  ];
+
+  let lastError=null;
+
+  async function fetchUrl(url){
+    const controller=new AbortController();
+    const timer=setTimeout(
+      ()=>controller.abort(),
+      30000
+    );
+
+    try{
+      const response=await fetch(
+        url+
+          (url.includes("?")?"&":"?")+
+          `_=${Date.now()}`,
+        {
+          cache:"no-store",
+          signal:controller.signal
+        }
+      );
+
+      if(!response.ok){
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data=await response.arrayBuffer();
+      const signature=new Uint8Array(
+        data.slice(0,2)
+      );
+
+      if(
+        data.byteLength<4||
+        signature[0]!==0x50||
+        signature[1]!==0x4b
+      ){
+        throw new Error(
+          "Response is not a valid XLSX file"
+        );
+      }
+
+      return data;
+    }finally{
+      clearTimeout(timer);
+    }
+  }
+
+  for(let attempt=1;attempt<=2;attempt++){
+    for(const bucket of buckets){
+      try{
+        const reference=
+          bucket===configured
+            ?firebase.storage()
+                .ref()
+                .child(path)
+            :firebase.storage()
+                .refFromURL(
+                  `gs://${bucket}/${path}`
+                );
+
+        const url=await reference.getDownloadURL();
+        return await fetchUrl(url);
+      }catch(error){
+        lastError=error;
+        console.warn(
+          `Storage fetch attempt ${attempt} failed for ${path} in ${bucket}`,
+          error
+        );
+      }
+    }
+
+    await new Promise(resolve=>
+      setTimeout(resolve,750)
+    );
+  }
+
+  throw new Error(
+    `${path}: ${lastError?.message||"Unknown Firebase Storage error"}`
+  );
+}
+async function loadPriorSnapshots(dateKey){
+  if(!db||!SNAPSHOT_ROOT){
+    return {
+      prior:null,
+      priorPrior:null
+    };
+  }
+
+  try{
+    const snap=await db
+      .ref(SNAPSHOT_ROOT)
+      .orderByKey()
+      .endAt(previousDateKey(dateKey))
+      .limitToLast(2)
+      .once("value");
+
+    const values=snap.val()||{};
+    const keys=Object.keys(values).sort();
+
+    if(keys.length){
+      return {
+        prior:values[keys[keys.length-1]]||null,
+        priorPrior:
+          keys.length>1
+            ?values[keys[keys.length-2]]||null
+            :null
+      };
+    }
+
+    if(activeCustomerKey!=="garda"){
+      return {
+        prior:null,
+        priorPrior:null
+      };
+    }
+
+    const fallback=await db
+      .ref("performanceReportingLogs/garda")
+      .orderByKey()
+      .endAt(previousDateKey(dateKey))
+      .limitToLast(1)
+      .once("value");
+
+    const fallbackValues=fallback.val()||{};
+    const fallbackKeys=
+      Object.keys(fallbackValues).sort();
+
+    if(!fallbackKeys.length){
+      return {
+        prior:null,
+        priorPrior:null
+      };
+    }
+
+    const value=fallbackValues[
+      fallbackKeys[fallbackKeys.length-1]
+    ];
+
+    return {
+      prior:{
+        vendor:{
+          total:value.uniqueVendorCount??null
+        },
+        vendedRepair:{
+          useful:
+            value.usefulPct!=null
+              ?value.usefulPct/100
+              :null,
+          oos:value.oosUnits??null
+        }
+      },
+      priorPrior:null
+    };
+  }catch(error){
+    console.warn(
+      "Prior snapshots unavailable",
+      error
+    );
+
+    return {
+      prior:null,
+      priorPrior:null
+    };
+  }
+}
+async function loadSupplemental(dateKey){
+  if(!db||!SUPPLEMENTAL_ROOT){
+    return {};
+  }
+
+  try{
+    const snap=await db
+      .ref(`${SUPPLEMENTAL_ROOT}/${dateKey}`)
+      .once("value");
+
+    return snap.val()||{};
+  }catch(error){
+    console.warn(
+      "Supplemental metrics unavailable",
+      error
+    );
+    return {};
+  }
+}
+function startSupplementalListener(dateKey){
+  if(supplementalListenerRef){
+    supplementalListenerRef.off();
+    supplementalListenerRef=null;
+  }
+
+  if(
+    !db||
+    !SUPPLEMENTAL_ROOT||
+    activeCustomerKey!=="garda"
+  ){
+    return;
+  }
+
+  supplementalListenerRef=db.ref(
+    `${SUPPLEMENTAL_ROOT}/${dateKey}`
+  );
+
+  supplementalListenerRef.on(
+    "value",
+    snap=>{
+      supplementalData=snap.val()||{};
+
+      if(lastParsed){
+        dashboardData=
+          mergeComputedAndSupplemental(
+            lastParsed,
+            supplementalData,
+            priorSnapshot,
+            priorPriorSnapshot
+          );
+        renderAll();
+      }
+    }
+  );
+}
+
+function safeFirebaseKey(value){
+  return String(value??"")
+    .replace(/[.#$\[\]\/]/g,"_")
+    .slice(0,240);
+}
+function dateDiffDays(later,earlier){
+  const laterDate=parseDate(later);
+  const earlierDate=parseDate(earlier);
+
+  if(!laterDate||!earlierDate){
+    return 0;
+  }
+
+  return Math.round(
+    (laterDate-earlierDate)/86400000
+  );
+}
+function ecdBucketRank(bucket){
+  return {
+    due14:5,
+    due814:4,
+    due47:3,
+    due03:2,
+    pastDue:1,
+    missing:0
+  }[bucket]??0;
+}
+function exportBucketLabel(bucket){
+  return (
+    EXPORT_BUCKET_LABELS[bucket]||
+    bucket||
+    ""
+  );
+}
+function activeEcdTrackingItems(data){
+  const detailData=data?.detailData||{};
+  const items=[];
+
+  (detailData.vrOrders||[]).forEach(order=>{
+    if(
+      !OPEN_STATUSES.has(order.status)||
+      !parseDate(order.due)
+    ){
+      return;
+    }
+
+    items.push({
+      trackerKey:
+        `${order.order}|vendedRepair`,
+      program:"vendedRepair",
+      programLabel:"Vended Repair",
+      vin:order.vin||"",
+      order:order.order,
+      status:order.status,
+      customer:order.customer||"",
+      branch:order.branchName||"",
+      task:order.task||"",
+      ecd:order.due
+    });
+  });
+
+  (detailData.maintenanceItems||[]).forEach(item=>{
+    if(
+      !OPEN_STATUSES.has(item.status)||
+      !parseDate(item.due)
+    ){
+      return;
+    }
+
+    items.push({
+      trackerKey:
+        `${item.order}|${item.program}`,
+      program:item.program,
+      programLabel:
+        programDisplayLabel(item.program),
+      vin:item.vin||"",
+      order:item.order,
+      status:item.status,
+      customer:item.customer||"",
+      branch:item.branchName||"",
+      task:item.task||"",
+      ecd:item.due
+    });
+  });
+
+  return items;
+}
+async function logEcdSlippage(data){
+  if(
+    !db||
+    !activeCustomerKey||
+    $("#report-date").value!==localDateKey()
+  ){
+    return;
+  }
+
+  const reportDateKey=$("#report-date").value;
+  const reportDate=dateFromKey(reportDateKey);
+  const customerTrackerRoot=
+    `${ECD_SLIPPAGE_TRACKER_ROOT}/${activeCustomerKey}`;
+  const customerLogRoot=
+    `${ECD_SLIPPAGE_LOG_ROOT}/${activeCustomerKey}`;
+
+  try{
+    const trackerSnapshot=await db
+      .ref(customerTrackerRoot)
+      .once("value");
+
+    const existingTrackers=
+      trackerSnapshot.val()||{};
+    const updates={};
+
+    activeEcdTrackingItems(data)
+      .forEach(item=>{
+        const trackerKey=safeFirebaseKey(
+          item.trackerKey
+        );
+        const currentEcdDate=parseDate(item.ecd);
+
+        if(!currentEcdDate){
+          return;
+        }
+
+        const currentEcd=
+          localDateKey(currentEcdDate);
+        const currentBucket=ecdBucket(
+          currentEcdDate,
+          reportDate
+        );
+        const prior=
+          existingTrackers[trackerKey]||null;
+
+        const firstSeenDate=
+          prior?.firstSeenDate||
+          reportDateKey;
+        const originalEcd=
+          prior?.originalEcd||
+          currentEcd;
+        const originalBucket=
+          prior?.originalBucket||
+          currentBucket;
+        const priorEcd=
+          prior?.lastEcd||
+          null;
+        const priorBucket=
+          prior?.lastBucket||
+          null;
+        const priorBucketEnteredDate=
+          prior?.bucketEnteredDate||
+          prior?.firstSeenDate||
+          reportDateKey;
+
+        const ecdExtensionDays=
+          priorEcd
+            ?Math.max(
+                0,
+                dateDiffDays(
+                  currentEcd,
+                  priorEcd
+                )
+              )
+            :0;
+
+        const totalExtensionDays=Math.max(
+          0,
+          dateDiffDays(
+            currentEcd,
+            originalEcd
+          )
+        );
+
+        const movedIntoTighterBucket=
+          Boolean(priorBucket)&&
+          ecdBucketRank(currentBucket)<
+            ecdBucketRank(priorBucket);
+
+        const bucketSlippageDays=
+          movedIntoTighterBucket
+            ?Math.max(
+                0,
+                dateDiffDays(
+                  reportDateKey,
+                  priorBucketEnteredDate
+                )
+              )
+            :0;
+
+        const daysPastDue=Math.max(
+          0,
+          dateDiffDays(
+            reportDateKey,
+            currentEcd
+          )
+        );
+
+        const eventTypes=[];
+
+        if(ecdExtensionDays>0){
+          eventTypes.push(
+            "ECD Date Extended"
+          );
+        }
+
+        if(movedIntoTighterBucket){
+          eventTypes.push(
+            currentBucket==="pastDue"
+              ?"ECD Bucket Missed"
+              :"Bucket Timeframe Missed"
+          );
+        }
+
+        if(daysPastDue>0){
+          eventTypes.push(
+            "Past Due ECD"
+          );
+        }
+
+        const bucketEnteredDate=
+          priorBucket&&
+          priorBucket===currentBucket
+            ?priorBucketEnteredDate
+            :reportDateKey;
+
+        const trackerRecord={
+          customerKey:activeCustomerKey,
+          customerLabel:
+            activeCustomerProfile?.label||
+            activeCustomerKey,
+          program:item.program,
+          programLabel:item.programLabel,
+          vin:item.vin,
+          order:item.order,
+          status:item.status,
+          customer:item.customer,
+          branch:item.branch,
+          task:item.task,
+          firstSeenDate,
+          originalEcd,
+          originalBucket,
+          lastEcd:currentEcd,
+          lastBucket:currentBucket,
+          bucketEnteredDate,
+          lastObservedDate:reportDateKey,
+          lastObservedAt:
+            new Date().toISOString(),
+          totalExtensionDays,
+          daysPastDue
+        };
+
+        updates[
+          `${customerTrackerRoot}/${trackerKey}`
+        ]=trackerRecord;
+
+        if(eventTypes.length){
+          const slippageDays=Math.max(
+            ecdExtensionDays,
+            totalExtensionDays,
+            bucketSlippageDays,
+            daysPastDue
+          );
+
+          updates[
+            `${customerLogRoot}/${reportDateKey}/${trackerKey}`
+          ]={
+            loggedAt:new Date().toISOString(),
+            reportDate:reportDateKey,
+            customerKey:activeCustomerKey,
+            customerLabel:
+              activeCustomerProfile?.label||
+              activeCustomerKey,
+            program:item.program,
+            programLabel:item.programLabel,
+            vin:item.vin,
+            order:item.order,
+            status:item.status,
+            customer:item.customer,
+            branch:item.branch,
+            task:item.task,
+            eventType:eventTypes.join("; "),
+            firstSeenDate,
+            originalEcd,
+            priorEcd,
+            currentEcd,
+            originalBucket,
+            priorBucket,
+            currentBucket,
+            bucketEnteredDate,
+            ecdExtensionDays,
+            totalExtensionDays,
+            bucketSlippageDays,
+            daysPastDue,
+            slippageDays
+          };
+        }
+      });
+
+    if(Object.keys(updates).length){
+      await db.ref().update(updates);
+    }
+  }catch(error){
+    console.warn(
+      "ECD slippage logging failed",
+      error
+    );
+  }
+}
+async function loadEcdSlippageHistory(
+  maximumDateNodes=180
+){
+  if(!db||!activeCustomerKey){
+    return [];
+  }
+
+  try{
+    const snapshot=await db
+      .ref(
+        `${ECD_SLIPPAGE_LOG_ROOT}/${activeCustomerKey}`
+      )
+      .orderByKey()
+      .limitToLast(maximumDateNodes)
+      .once("value");
+
+    const values=snapshot.val()||{};
+    const events=[];
+
+    Object.keys(values)
+      .sort()
+      .forEach(dateKey=>{
+        Object.values(values[dateKey]||{})
+          .forEach(event=>{
+            events.push({
+              ...event,
+              reportDate:
+                event.reportDate||
+                dateKey
+            });
+          });
+      });
+
+    return events;
+  }catch(error){
+    console.warn(
+      "ECD slippage history unavailable",
+      error
+    );
+    return [];
+  }
+}
+async function loadMaintenanceTrendHistory(
+  maximumPoints=60
+){
+  if(!db||!SNAPSHOT_ROOT){
+    return [];
+  }
+
+  try{
+    const snapshot=await db
+      .ref(SNAPSHOT_ROOT)
+      .orderByKey()
+      .limitToLast(maximumPoints)
+      .once("value");
+
+    const values=snapshot.val()||{};
+    const rows=Object.keys(values)
+      .sort()
+      .map(dateKey=>{
+        const maintenance=
+          values[dateKey]?.maintenance||{};
+        const metrics={};
+
+        PROGRAMS.forEach(program=>{
+          const metric=
+            maintenance[program.key]||{};
+
+          metrics[program.key]={
+            compliance:
+              metric.compliance??null,
+            overdueNotScheduled:
+              metric.overdueNotScheduled??null,
+            schedulingGap:
+              metric.gap??null
+          };
+        });
+
+        return {
+          date:dateKey,
+          metrics
+        };
+      });
+
+    const currentDate=
+      $("#report-date").value;
+    const currentMetrics={};
+
+    PROGRAMS.forEach(program=>{
+      const metric=
+        dashboardData?.maintenance?.[
+          program.key
+        ]||{};
+
+      currentMetrics[program.key]={
+        compliance:
+          metric.compliance??null,
+        overdueNotScheduled:
+          metric.projection
+            ?.unscheduledOverdueUnits??null,
+        schedulingGap:
+          metric.gap??null
+      };
+    });
+
+    const existingIndex=rows.findIndex(
+      row=>row.date===currentDate
+    );
+
+    const currentRow={
+      date:currentDate,
+      metrics:currentMetrics
+    };
+
+    if(existingIndex>=0){
+      rows[existingIndex]=currentRow;
+    }else{
+      rows.push(currentRow);
+    }
+
+    return rows
+      .sort((a,b)=>
+        String(a.date).localeCompare(
+          String(b.date)
+        )
+      )
+      .slice(-maximumPoints);
+  }catch(error){
+    console.warn(
+      "Maintenance trend history unavailable",
+      error
+    );
+
+    return [];
+  }
+}
+function buildEcdSlippageRows(events){
+  const headers=[
+    "Report Date",
+    "Customer",
+    "Program",
+    "VIN",
+    "Order",
+    "Status",
+    "Event Type",
+    "First Seen",
+    "Original ECD",
+    "Prior ECD",
+    "Current ECD",
+    "Original Bucket",
+    "Prior Bucket",
+    "Current Bucket",
+    "ECD Extension Days",
+    "Total Extension Days",
+    "Bucket Slippage Days",
+    "Days Past Due",
+    "Slippage Days",
+    "Branch",
+    "Task"
+  ];
+
+  const rows=(events||[])
+    .slice()
+    .sort((a,b)=>
+      String(a.reportDate).localeCompare(
+        String(b.reportDate)
+      )||
+      String(a.programLabel).localeCompare(
+        String(b.programLabel)
+      )||
+      String(a.order).localeCompare(
+        String(b.order)
+      )
+    )
+    .map(event=>[
+      event.reportDate||"",
+      event.customerLabel||"",
+      event.programLabel||
+        programDisplayLabel(event.program),
+      event.vin||"",
+      event.order||"",
+      event.status||"",
+      event.eventType||"",
+      event.firstSeenDate||"",
+      event.originalEcd||"",
+      event.priorEcd||"",
+      event.currentEcd||"",
+      exportBucketLabel(
+        event.originalBucket
+      ),
+      exportBucketLabel(
+        event.priorBucket
+      ),
+      exportBucketLabel(
+        event.currentBucket
+      ),
+      Number(
+        event.ecdExtensionDays||0
+      ),
+      Number(
+        event.totalExtensionDays||0
+      ),
+      Number(
+        event.bucketSlippageDays||0
+      ),
+      Number(
+        event.daysPastDue||0
+      ),
+      Number(
+        event.slippageDays||0
+      ),
+      event.branch||"",
+      event.task||""
+    ]);
+
+  return [headers,...rows];
+}
+function appendEcdSlippageSheet(
+  workbook,
+  events
+){
+  const rows=buildEcdSlippageRows(events);
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    makeDetailSheet(
+      rows,
+      [
+        14,18,28,20,20,22,32,
+        14,14,14,14,20,20,20,
+        18,20,20,16,16,32,64
+      ]
+    ),
+    "ECD Slippage"
+  );
+}
+function trendHeaders(){
+  const headers=["Date"];
+
+  PROGRAMS.forEach(program=>{
+    headers.push(
+      `${program.shortLabel||program.label} Compliance %`,
+      `${program.shortLabel||program.label} Overdue Not Scheduled`,
+      `${program.shortLabel||program.label} Scheduling Gap %`
+    );
+  });
+
+  return headers;
+}
+function trendDataRows(history){
+  return (history||[]).map(row=>{
+    const output=[row.date];
+
+    PROGRAMS.forEach(program=>{
+      const metric=
+        row.metrics?.[program.key]||{};
+
+      output.push(
+        metric.compliance??null,
+        metric.overdueNotScheduled??null,
+        metric.schedulingGap??null
+      );
+    });
+
+    return output;
+  });
+}
+function appendMaintenanceTrendSheet(
+  workbook,
+  history
+){
+  const titleRow=[
+    "Vended Maintenance Metric Trends"
+  ];
+  const descriptionRow=[
+    "Line charts use the daily Firebase Realtime Database snapshots for the selected customer."
+  ];
+  const chartSpace=Array.from(
+    {length:66},
+    ()=>[]
+  );
+  const rows=[
+    titleRow,
+    descriptionRow,
+    ...chartSpace,
+    trendHeaders(),
+    ...trendDataRows(history)
+  ];
+
+  const worksheet=
+    XLSX.utils.aoa_to_sheet(rows);
+
+  const headerRowIndex=68;
+  const range=XLSX.utils.decode_range(
+    worksheet["!ref"]||"A1:A1"
+  );
+
+  worksheet["!cols"]=trendHeaders()
+    .map((_,index)=>({
+      wch:index===0?14:24
+    }));
+
+  const titleRef="A1";
+  worksheet[titleRef].s={
+    font:{
+      name:"Raleway",
+      sz:16,
+      bold:true,
+      color:{rgb:"1F2937"}
+    },
+    alignment:{
+      horizontal:"left",
+      vertical:"center"
+    }
+  };
+
+  const descriptionRef="A2";
+  worksheet[descriptionRef].s={
+    font:{
+      name:"Raleway",
+      sz:10,
+      color:{rgb:"64748B"}
+    },
+    alignment:{
+      horizontal:"left",
+      vertical:"center"
+    }
+  };
+
+  for(
+    let column=range.s.c;
+    column<=range.e.c;
+    column++
+  ){
+    const ref=XLSX.utils.encode_cell({
+      r:headerRowIndex,
+      c:column
+    });
+
+    if(!worksheet[ref]){
+      continue;
+    }
+
+    worksheet[ref].s={
+      font:{
+        name:"Raleway",
+        sz:10,
+        bold:true,
+        color:{rgb:"111827"}
+      },
+      fill:{
+        fgColor:{rgb:"D9DEE3"}
+      },
+      alignment:{
+        horizontal:"center",
+        vertical:"center",
+        wrapText:true
+      },
+      border:{
+        top:{
+          style:"thin",
+          color:{rgb:"AEB7C0"}
+        },
+        bottom:{
+          style:"thin",
+          color:{rgb:"AEB7C0"}
+        },
+        left:{
+          style:"thin",
+          color:{rgb:"AEB7C0"}
+        },
+        right:{
+          style:"thin",
+          color:{rgb:"AEB7C0"}
+        }
+      }
+    };
+  }
+
+  for(
+    let row=headerRowIndex+1;
+    row<=range.e.r;
+    row++
+  ){
+    for(
+      let column=range.s.c;
+      column<=range.e.c;
+      column++
+    ){
+      const ref=XLSX.utils.encode_cell({
+        r:row,
+        c:column
+      });
+
+      if(!worksheet[ref]){
+        continue;
+      }
+
+      worksheet[ref].s={
+        font:{
+          name:"Raleway",
+          sz:9,
+          color:{rgb:"334155"}
+        },
+        alignment:{
+          horizontal:
+            column===0
+              ?"left"
+              :"right",
+          vertical:"center"
+        },
+        border:{
+          bottom:{
+            style:"thin",
+            color:{rgb:"E2E8F0"}
+          }
+        }
+      };
+
+      if(
+        column>0&&
+        (column-1)%3!==1&&
+        typeof worksheet[ref].v==="number"
+      ){
+        worksheet[ref].z="0.0%";
+      }
+    }
+  }
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    worksheet,
+    "Vended Maintenance Trends"
+  );
+}
+function chartSeriesColors(){
+  return [
+    "#4472C4",
+    "#ED7D31",
+    "#A5A5A5",
+    "#FFC000",
+    "#70AD47",
+    "#5B9BD5",
+    "#C55A11",
+    "#8064A2",
+    "#00B0F0",
+    "#7F6000"
+  ];
+}
+function renderTrendChartDataUrl(
+  history,
+  metricKey,
+  title,
+  yAxisLabel,
+  percentAxis=false
+){
+  const width=1240;
+  const height=390;
+  const canvas=document.createElement(
+    "canvas"
+  );
+  canvas.width=width;
+  canvas.height=height;
+
+  const context=canvas.getContext("2d");
+  const margin={
+    left:92,
+    right:34,
+    top:64,
+    bottom:82
+  };
+  const plotWidth=
+    width-margin.left-margin.right;
+  const plotHeight=
+    height-margin.top-margin.bottom;
+  const colors=chartSeriesColors();
+
+  context.fillStyle="#FFFFFF";
+  context.fillRect(0,0,width,height);
+
+  context.fillStyle="#5A5A5A";
+  context.font=
+    "600 24px Arial, sans-serif";
+  context.textAlign="center";
+  context.fillText(
+    title,
+    width/2,
+    34
+  );
+
+  const values=[];
+
+  history.forEach(row=>{
+    PROGRAMS.forEach(program=>{
+      const value=Number(
+        row.metrics?.[program.key]?.[
+          metricKey
+        ]
+      );
+
+      if(Number.isFinite(value)){
+        values.push(value);
+      }
+    });
+  });
+
+  let maximum=percentAxis
+    ?1
+    :Math.max(
+        1,
+        ...values
+      );
+
+  if(!percentAxis){
+    maximum=Math.ceil(
+      maximum*1.15
+    );
+  }
+
+  const yTicks=5;
+
+  context.font=
+    "12px Arial, sans-serif";
+  context.lineWidth=1;
+
+  for(let index=0;index<=yTicks;index++){
+    const value=
+      maximum-
+      (maximum/yTicks)*index;
+    const y=
+      margin.top+
+      (plotHeight/yTicks)*index;
+
+    context.strokeStyle="#D0D4D8";
+    context.beginPath();
+    context.moveTo(margin.left,y);
+    context.lineTo(
+      width-margin.right,
+      y
+    );
+    context.stroke();
+
+    context.fillStyle="#3F3F3F";
+    context.textAlign="right";
+    context.fillText(
+      percentAxis
+        ?`${Math.round(value*100)}%`
+        :Math.round(value).toLocaleString(),
+      margin.left-12,
+      y+4
+    );
+  }
+
+  context.strokeStyle="#4B4B4B";
+  context.lineWidth=1.5;
+  context.beginPath();
+  context.moveTo(
+    margin.left,
+    margin.top
+  );
+  context.lineTo(
+    margin.left,
+    margin.top+plotHeight
+  );
+  context.lineTo(
+    width-margin.right,
+    margin.top+plotHeight
+  );
+  context.stroke();
+
+  context.save();
+  context.translate(
+    24,
+    margin.top+plotHeight/2
+  );
+  context.rotate(-Math.PI/2);
+  context.fillStyle="#333333";
+  context.font=
+    "600 15px Arial, sans-serif";
+  context.textAlign="center";
+  context.fillText(
+    yAxisLabel,
+    0,
+    0
+  );
+  context.restore();
+
+  context.fillStyle="#333333";
+  context.font=
+    "600 15px Arial, sans-serif";
+  context.textAlign="center";
+  context.fillText(
+    "Report date",
+    margin.left+plotWidth/2,
+    height-18
+  );
+
+  const pointCount=history.length;
+  const xPosition=index=>{
+    if(pointCount<=1){
+      return margin.left+plotWidth/2;
+    }
+
+    return (
+      margin.left+
+      (index/(pointCount-1))*plotWidth
+    );
+  };
+
+  const labelEvery=Math.max(
+    1,
+    Math.ceil(pointCount/9)
+  );
+
+  context.font=
+    "11px Arial, sans-serif";
+
+  history.forEach((row,index)=>{
+    if(
+      index%labelEvery!==0&&
+      index!==pointCount-1
+    ){
+      return;
+    }
+
+    const x=xPosition(index);
+    const displayDate=parseDate(row.date);
+    const label=displayDate
+      ?displayDate.toLocaleDateString(
+          "en-US",
+          {
+            month:"short",
+            day:"numeric"
+          }
+        )
+      :row.date;
+
+    context.save();
+    context.translate(
+      x,
+      margin.top+plotHeight+18
+    );
+    context.rotate(-Math.PI/5);
+    context.fillStyle="#3F3F3F";
+    context.textAlign="right";
+    context.fillText(
+      label,
+      0,
+      0
+    );
+    context.restore();
+  });
+
+  PROGRAMS.forEach((program,seriesIndex)=>{
+    const color=
+      colors[seriesIndex%colors.length];
+    let segmentOpen=false;
+
+    context.strokeStyle=color;
+    context.fillStyle=color;
+    context.lineWidth=3;
+    context.beginPath();
+
+    history.forEach((row,index)=>{
+      const value=Number(
+        row.metrics?.[program.key]?.[
+          metricKey
+        ]
+      );
+
+      if(!Number.isFinite(value)){
+        segmentOpen=false;
+        return;
+      }
+
+      const x=xPosition(index);
+      const y=
+        margin.top+
+        plotHeight-
+        (
+          Math.max(
+            0,
+            Math.min(maximum,value)
+          )/
+          maximum
+        )*plotHeight;
+
+      if(!segmentOpen){
+        context.moveTo(x,y);
+        segmentOpen=true;
+      }else{
+        context.lineTo(x,y);
+      }
+    });
+
+    context.stroke();
+
+    history.forEach((row,index)=>{
+      const value=Number(
+        row.metrics?.[program.key]?.[
+          metricKey
+        ]
+      );
+
+      if(!Number.isFinite(value)){
+        return;
+      }
+
+      const x=xPosition(index);
+      const y=
+        margin.top+
+        plotHeight-
+        (
+          Math.max(
+            0,
+            Math.min(maximum,value)
+          )/
+          maximum
+        )*plotHeight;
+
+      context.beginPath();
+      context.arc(
+        x,
+        y,
+        3.2,
+        0,
+        Math.PI*2
+      );
+      context.fill();
+    });
+  });
+
+  const legendY=height-51;
+  const legendItemWidth=Math.max(
+    120,
+    Math.floor(
+      (width-80)/
+      Math.max(1,PROGRAMS.length)
+    )
+  );
+  const legendStartX=Math.max(
+    36,
+    (width-
+      legendItemWidth*PROGRAMS.length
+    )/2
+  );
+
+  context.font=
+    "12px Arial, sans-serif";
+  context.textAlign="left";
+
+  PROGRAMS.forEach((program,index)=>{
+    const x=
+      legendStartX+
+      index*legendItemWidth;
+    const color=
+      colors[index%colors.length];
+
+    context.fillStyle=color;
+    context.fillRect(
+      x,
+      legendY-9,
+      22,
+      4
+    );
+
+    context.fillStyle="#3F3F3F";
+    context.fillText(
+      program.shortLabel||
+        program.label,
+      x+30,
+      legendY
+    );
+  });
+
+  return canvas.toDataURL(
+    "image/png"
+  );
+}
+function triggerWorkbookDownload(
+  buffer,
+  filename
+){
+  const blob=new Blob(
+    [buffer],
+    {
+      type:
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    }
+  );
+  const url=URL.createObjectURL(blob);
+  const anchor=document.createElement("a");
+
+  anchor.href=url;
+  anchor.download=filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+
+  setTimeout(
+    ()=>URL.revokeObjectURL(url),
+    1500
+  );
+}
+async function writeWorkbookWithTrendCharts(
+  workbook,
+  filename,
+  trendHistory
+){
+  appendMaintenanceTrendSheet(
+    workbook,
+    trendHistory
+  );
+
+  if(
+    typeof ExcelJS==="undefined"||
+    !(trendHistory||[]).length
+  ){
+    XLSX.writeFile(
+      workbook,
+      filename
+    );
+    return;
+  }
+
+  const baseBuffer=XLSX.write(
+    workbook,
+    {
+      bookType:"xlsx",
+      type:"array"
+    }
+  );
+
+  const excelWorkbook=
+    new ExcelJS.Workbook();
+
+  await excelWorkbook.xlsx.load(
+    baseBuffer
+  );
+
+  const worksheet=
+    excelWorkbook.getWorksheet(
+      "Vended Maintenance Trends"
+    );
+
+  if(worksheet){
+    const charts=[
+      {
+        metricKey:"compliance",
+        title:
+          "Vended Maintenance Compliance Trend",
+        yAxisLabel:"Compliance %",
+        percentAxis:true,
+        topRow:2
+      },
+      {
+        metricKey:"overdueNotScheduled",
+        title:
+          "Overdue Maintenance Not Scheduled",
+        yAxisLabel:
+          "Unique overdue VINs",
+        percentAxis:false,
+        topRow:24
+      },
+      {
+        metricKey:"schedulingGap",
+        title:
+          "Vended Maintenance Scheduling Gap",
+        yAxisLabel:"Scheduling gap %",
+        percentAxis:true,
+        topRow:46
+      }
+    ];
+
+    charts.forEach(chartConfig=>{
+      const dataUrl=
+        renderTrendChartDataUrl(
+          trendHistory,
+          chartConfig.metricKey,
+          chartConfig.title,
+          chartConfig.yAxisLabel,
+          chartConfig.percentAxis
+        );
+
+      const imageId=
+        excelWorkbook.addImage({
+          base64:dataUrl,
+          extension:"png"
+        });
+
+      worksheet.addImage(
+        imageId,
+        {
+          tl:{
+            col:0,
+            row:chartConfig.topRow
+          },
+          ext:{
+            width:1240,
+            height:390
+          }
+        }
+      );
+    });
+
+    worksheet.views=[
+      {
+        state:"frozen",
+        ySplit:69
+      }
+    ];
+  }
+
+  const output=
+    await excelWorkbook.xlsx.writeBuffer();
+
+  triggerWorkbookDownload(
+    output,
+    filename
+  );
+}
+
+async function saveSnapshot(data){
+  if(
+    !db||
+    !SNAPSHOT_ROOT||
+    $("#report-date").value!==localDateKey()
+  ){
+    return;
+  }
+
+  const dateKey=$("#report-date").value;
+
+  const payload={
+    savedAt:new Date().toISOString(),
+    customerKey:activeCustomerKey,
+    metadata:data.metadata,
+    vendedRepair:data.vendedRepair?.current||{},
+    vrEcd:data.vrEcd||{},
+    maintenance:Object.fromEntries(
+      PROGRAMS.map(program=>[
+        program.key,
+        {
+          compliance:
+            data.maintenance[program.key]?.compliance??null,
+          achievable:
+            data.maintenance[program.key]?.achievable??null,
+          gap:
+            data.maintenance[program.key]?.gap??null,
+          overdueNotScheduled:
+            data.maintenance[program.key]
+              ?.projection
+              ?.unscheduledOverdueUnits??null,
+          totalUnits:
+            data.maintenance[program.key]
+              ?.projection
+              ?.totalUnits??null,
+          ecd:
+            data.maintenance[program.key]?.ecd||emptyEcd()
+        }
+      ])
+    ),
+    vendor:data.vendor||{},
+    ers:data.ers?.current||{}
+  };
+
+  try{
+    await db
+      .ref(`${SNAPSHOT_ROOT}/${dateKey}`)
+      .set(payload);
+  }catch(error){
+    console.warn(
+      "Realtime Database snapshot save failed",
+      error
+    );
+  }
+}
+async function processBuffer(buffers,sourceLabel){
+  if(!activeCustomerProfile){
+    return;
+  }
+
+  setStatus(
+    "loading",
+    `Processing ${activeCustomerProfile.label} workbooks`,
+    `${sourceLabel}: validating source files and calculating maintenance metrics…`
+  );
+
+  lastWorkbookBuffer=buffers;
+
+  lastParsed=activeCustomerKey==="garda"
+    ?parseWorkbook(buffers.master)
+    :parseExternalCustomer(
+        buffers,
+        activeCustomerProfile
+      );
+
+  const dateKey=$("#report-date").value;
+
+  const [
+    snapshotHistory,
+    loadedSupplementalData
+  ]=await Promise.all([
+    loadPriorSnapshots(dateKey),
+    loadSupplemental(dateKey)
+  ]);
+
+  priorSnapshot=snapshotHistory.prior;
+  priorPriorSnapshot=snapshotHistory.priorPrior;
+  supplementalData=loadedSupplementalData;
+
+  dashboardData=mergeComputedAndSupplemental(
+    lastParsed,
+    supplementalData,
+    priorSnapshot,
+    priorPriorSnapshot
+  );
+
+  renderAll();
+  startSupplementalListener(dateKey);
+
+  await Promise.all([
+    saveSnapshot(dashboardData),
+    logEcdSlippage(dashboardData)
+  ]);
+
+  $("#export-btn").disabled=false;
+
+  const sourceCount=activeCustomerKey==="garda"
+    ?1
+    :1+activeSourcePaths().length;
+
+  setStatus(
+    "ok",
+    `${activeCustomerProfile.label} workbooks loaded`,
+    `${sourceLabel} • ${sourceCount} workbook${sourceCount===1?"":"s"} • ${dashboardData.metadata.uniqueOpenOrders.toLocaleString()} unique open maintenance order${dashboardData.metadata.uniqueOpenOrders===1?"":"s"} • ${dashboardData.metadata.uniqueMaintenanceItems.toLocaleString()} matched maintenance task item${dashboardData.metadata.uniqueMaintenanceItems===1?"":"s"}.`
+  );
+
+  $("#order-pill").textContent=
+    `Open ROs ${dashboardData.metadata.uniqueOpenOrders.toLocaleString()}`;
+  $("#order-pill").className="opd-pill good";
+
+  $("#updated-pill").textContent=
+    `Updated ${new Date().toLocaleTimeString(
+      [],
+      {hour:"numeric",minute:"2-digit"}
+    )}`;
+  $("#updated-pill").className="opd-pill good";
+}
+async function loadFromFirebase(){
+  if(!activeCustomerProfile){
+    setStatus(
+      "loading",
+      "Select a customer",
+      "No customer is selected."
+    );
+    return;
+  }
+
+  const requestedCustomer=activeCustomerKey;
+  const sourcePaths=activeSourcePaths();
+
+  try{
+    setStatus(
+      "loading",
+      `Fetching ${activeCustomerProfile.label} workbooks`,
+      `Downloading master_workFLOWtest.xlsx${sourcePaths.length?` and ${sourcePaths.length} customer source workbook${sourcePaths.length===1?"":"s"}`:""} from Firebase Storage…`
+    );
+
+    const [
+      master,
+      sourceEntries
+    ]=await Promise.all([
+      fetchStorageBuffer(WORKBOOK_PATH),
+      Promise.all(
+        sourcePaths.map(async path=>[
+          path,
+          await fetchStorageBuffer(path)
+        ])
+      )
+    ]);
+
+    if(requestedCustomer!==activeCustomerKey){
+      return;
+    }
+
+    const buffers={
+      master,
+      sources:Object.fromEntries(
+        sourceEntries
+      )
+    };
+
+    await processBuffer(
+      buffers,
+      "Firebase Storage"
+    );
+  }catch(error){
+    console.error(
+      `Failed to load ${activeCustomerProfile.label} workbooks:`,
+      error
+    );
+
+    const errorMessage=
+      error?.message||String(error);
+
+    setStatus(
+      "error",
+      `${activeCustomerProfile.label} workbooks could not load`,
+      errorMessage
+    );
+
+    showWarning([
+      `Unable to load the selected customer source. Firebase returned: ${errorMessage}. Confirm the workbook filename in Storage matches exactly.`
+    ]);
+  }
+}
+async function exportCustomerMaintenance(){
+  if(!dashboardData||!activeCustomerProfile){
+    return;
+  }
+
+  const [
+    slippageHistory,
+    trendHistory
+  ]=await Promise.all([
+    loadEcdSlippageHistory(),
+    loadMaintenanceTrendHistory()
+  ]);
+
+  const wb=XLSX.utils.book_new();
+  const maintRows=[[
+    "Vended Maintenance",
+    "Prior Day",
+    "Current Day",
+    "Delta",
+    "# Overdue Not Scheduled",
+    "Scheduling Gap"
+  ]];
+  const maintTypes=[];
+  const maintFillerCells=[];
+
+  PROGRAMS.forEach(program=>{
+    const metric=dashboardData.maintenance[program.key];
+    let rowIndex=maintRows.length;
+
+    maintRows.push([
+      program.label,
+      excelValue(metric.priorCompliance,"percent"),
+      excelValue(metric.compliance,"percent"),
+      excelSourceDelta(
+        metric.reportedDelta,
+        metric.priorCompliance,
+        metric.compliance,
+        "percent"
+      ),
+      excelValue(
+        metric.projection?.unscheduledOverdueUnits,
+        "number"
+      ),
+      excelValue(metric.gap,"percent")
+    ]);
+
+    maintTypes.push([rowIndex,"percent",1,3]);
+    maintTypes.push([rowIndex,"number",4,4]);
+    maintTypes.push([rowIndex,"percent",5,5]);
+
+    MAINTENANCE_ECD_ROWS.forEach(ecd=>{
+      rowIndex=maintRows.length;
+      maintRows.push([
+        `   ${ecd.label}`,
+        excelValue(metric.priorEcd?.[ecd.key]),
+        excelValue(metric.ecd[ecd.key]),
+        excelDelta(
+          metric.priorEcd?.[ecd.key],
+          metric.ecd[ecd.key]
+        ),
+        null,
+        null
+      ]);
+
+      maintTypes.push([rowIndex,"number",1,3]);
+      maintFillerCells.push([rowIndex,4]);
+      maintFillerCells.push([rowIndex,5]);
+    });
+  });
+
+  const consolidatedSheet=makeConsolidatedSheet([
+    {
+      rows:maintRows,
+      width:6,
+      types:maintTypes,
+      fillerCells:maintFillerCells
+    }
+  ]);
+
+  XLSX.utils.book_append_sheet(
+    wb,
+    consolidatedSheet,
+    "Consolidated"
+  );
+
+  const maintenanceSheet=makeSheet(
+    maintRows,
+    [42,15,15,15,24,18],
+    maintTypes
+  );
+
+  applyLinedFiller(
+    maintenanceSheet,
+    maintFillerCells
+  );
+
+  XLSX.utils.book_append_sheet(
+    wb,
+    maintenanceSheet,
+    "Vended Maintenance"
+  );
+
+  const detailData=dashboardData.detailData||{};
+  const ecdDetailRows=buildEcdDetailRows(detailData);
+
+  XLSX.utils.book_append_sheet(
+    wb,
+    makeDetailSheet(
+      ecdDetailRows,
+      [24,18,20,18,22,18,28,13,13,38,13,30,18,62],
+      [7,8]
+    ),
+    "ECD Detail"
+  );
+
+  const usedSheetNames=new Set(
+    wb.SheetNames.map(name=>upper(name))
+  );
+
+  PROGRAMS.forEach(program=>{
+    const rows=buildMaintenanceNotScheduledRows(
+      detailData,
+      program.key,
+      program.shortLabel||program.label
+    );
+
+    let sheetName=clean(
+      program.sheetLabel||
+      `${program.shortLabel||program.label} Not Scheduled`
+    )
+      .replace(/[\\/?*\[\]:]/g," ")
+      .replace(/\s+/g," ")
+      .trim()
+      .slice(0,31);
+
+    const baseName=sheetName;
+    let suffix=2;
+
+    while(usedSheetNames.has(upper(sheetName))){
+      const suffixText=` ${suffix++}`;
+      sheetName=
+        baseName
+          .slice(0,31-suffixText.length)+
+        suffixText;
+    }
+
+    usedSheetNames.add(upper(sheetName));
+
+    XLSX.utils.book_append_sheet(
+      wb,
+      makeDetailSheet(
+        rows,
+        [20,16,36,28,28,30,24,26,24,22,62,54,16]
+      ),
+      sheetName
+    );
+  });
+
+  const fileLabel=activeCustomerProfile.label
+    .replace(/[^A-Za-z0-9]+/g,"_");
+
+  appendEcdSlippageSheet(
+    wb,
+    slippageHistory
+  );
+
+  await writeWorkbookWithTrendCharts(
+    wb,
+    `${fileLabel}_Vended_Operational_Performance_${$("#report-date").value}.xlsx`,
+    trendHistory
+  );
+}
+async function exportAllTables(){
+  if(!dashboardData||!activeCustomerProfile){
+    return;
+  }
+
+  $("#export-btn").disabled=true;
+
+  try{
+    setStatus(
+      "loading",
+      "Building workbook export",
+      "Loading ECD slippage history and maintenance trend snapshots from Firebase Realtime Database…"
+    );
+
+    if(activeCustomerKey==="garda"){
+      await exportGardaTables();
+    }else{
+      await exportCustomerMaintenance();
+    }
+
+    setStatus(
+      "ok",
+      "Workbook export created",
+      "The export includes ECD Slippage and Vended Maintenance Trends tabs."
+    );
+  }catch(error){
+    console.error(
+      "Workbook export failed",
+      error
+    );
+
+    setStatus(
+      "error",
+      "Workbook export failed",
+      error?.message||String(error)
+    );
+  }finally{
+    $("#export-btn").disabled=false;
+  }
+}
+async function initialize(){
+  if(!firebase.apps.length){
+    firebase.initializeApp(FIREBASE_CONFIG);
+  }
+
+  db=firebase.database();
+  applyCustomerLayout();
+
+  firebase.auth().onAuthStateChanged(user=>{
+    if(user){
+      $("#login-overlay").style.display="none";
+
+      if(activeCustomerProfile){
+        loadFromFirebase();
+      }else{
+        setStatus(
+          "loading",
+          "Select a customer",
+          "Choose Garda, Frontier, or Ferguson to load its Firebase Storage workbooks."
+        );
+      }
+    }else{
+      $("#login-overlay").style.display="flex";
+      setStatus(
+        "loading",
+        "Waiting for Firebase authentication",
+        "Enter the OSC+ password, then select a customer."
+      );
+    }
+  });
+}
+
+
 $("#login-form").addEventListener("submit",async e=>{e.preventDefault();const error=$("#login-error");error.style.display="none";try{await firebase.auth().signInWithEmailAndPassword(MASTER_EMAIL,$("#login-password").value);}catch(err){console.error(err);error.textContent=err.message||"Incorrect password or Firebase authentication failed.";error.style.display="block";}});
 $("#export-btn").addEventListener("click",exportAllTables);
-$("#report-date").addEventListener("change",async()=>{if(!lastWorkbookBuffer)return;try{await processBuffer(lastWorkbookBuffer,"Recalculated from loaded workbook");}catch(err){setStatus("error","Recalculation failed",err.message);}});
-$("#report-date").value=localDateKey();initialize();setInterval(()=>{if(firebase.auth().currentUser)loadFromFirebase();},15*60*1000);
+$("#customer-select").addEventListener("change",event=>{
+  selectCustomer(event.target.value);
+});
+$("#report-date").addEventListener("change",async()=>{
+  if(!lastWorkbookBuffer||!activeCustomerProfile)return;
+  try{
+    await processBuffer(
+      lastWorkbookBuffer,
+      "Recalculated from loaded workbooks"
+    );
+  }catch(error){
+    setStatus(
+      "error",
+      "Recalculation failed",
+      error.message
+    );
+  }
+});
+$("#report-date").value=localDateKey();
+$("#customer-select").value="";
+initialize();
+setInterval(()=>{
+  if(
+    firebase.auth().currentUser&&
+    activeCustomerProfile
+  ){
+    loadFromFirebase();
+  }
+},15*60*1000);
 
   </script>
 </body>
