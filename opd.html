@@ -3936,22 +3936,23 @@ function makeDetailSheet(rows,widths,dateColumns=[]){
     };
   }
 
-  const range=XLSX.utils.decode_range(ws["!ref"]||"A1:A1");
-  const reasonColumn=(rows[0]||[]).findIndex(
-    header=>upper(header)==="REASON"
-  );
-  const statusColumn=(rows[0]||[]).findIndex(
-    header=>upper(header)==="SCHEDULING STATUS"
+  const range=XLSX.utils.decode_range(
+    ws["!ref"]||"A1:A1"
   );
 
   for(let row=0;row<=range.e.r;row++){
     for(let col=0;col<=range.e.c;col++){
-      const ref=XLSX.utils.encode_cell({r:row,c:col});
-      if(!ws[ref])ws[ref]={t:"s",v:""};
+      const ref=XLSX.utils.encode_cell({
+        r:row,
+        c:col
+      });
+
+      if(!ws[ref]){
+        ws[ref]={t:"s",v:""};
+      }
 
       const cell=ws[ref];
       const header=row===0;
-      const alternate=row>0&&row%2===0;
 
       cell.s={
         font:{
@@ -3961,46 +3962,63 @@ function makeDetailSheet(rows,widths,dateColumns=[]){
           color:{
             rgb:header
               ?"FFFFFF"
-              :col===reasonColumn
-                ?"9C1C14"
-                :"20262D"
+              :"000000"
           }
         },
         fill:{
+          patternType:"solid",
           fgColor:{
+            rgb:header
+              ?"0B1F3A"
+              :"FFFFFF"
+          },
+          bgColor:{
             rgb:header
               ?"0B1F3A"
               :"FFFFFF"
           }
         },
         alignment:{
-          horizontal:header?"center":"left",
+          horizontal:
+            header
+              ?"center"
+              :"left",
           vertical:"center",
           wrapText:true
         },
         border:{
-          top:{style:"thin",color:{rgb:"C5CDD5"}},
-          bottom:{style:"thin",color:{rgb:"C5CDD5"}},
-          left:{style:"thin",color:{rgb:"C5CDD5"}},
-          right:{style:"thin",color:{rgb:"C5CDD5"}}
+          top:{
+            style:"thin",
+            color:{rgb:"C5CDD5"}
+          },
+          bottom:{
+            style:"thin",
+            color:{rgb:"C5CDD5"}
+          },
+          left:{
+            style:"thin",
+            color:{rgb:"C5CDD5"}
+          },
+          right:{
+            style:"thin",
+            color:{rgb:"C5CDD5"}
+          }
         }
       };
-
-      if(
-        row>0&&
-        col===statusColumn&&
-        upper(cell.v)==="SCHEDULED"
-      ){
-        cell.s.font.color={rgb:"16794A"};
-        cell.s.font.bold=true;
-      }
     }
   }
 
   dateColumns.forEach(column=>{
     for(let row=1;row<=range.e.r;row++){
-      const ref=XLSX.utils.encode_cell({r:row,c:column});
-      if(ws[ref]&&ws[ref].v instanceof Date){
+      const ref=XLSX.utils.encode_cell({
+        r:row,
+        c:column
+      });
+
+      if(
+        ws[ref]&&
+        ws[ref].v instanceof Date
+      ){
         ws[ref].z="m/d/yyyy";
       }
     }
@@ -7399,10 +7417,12 @@ function appendMaintenanceTrendSheet(
         font:{
           name:"Raleway",
           sz:9,
-          color:{rgb:"1F2937"}
+          color:{rgb:"000000"}
         },
         fill:{
-          fgColor:{rgb:"FFFFFF"}
+          patternType:"solid",
+          fgColor:{rgb:"FFFFFF"},
+          bgColor:{rgb:"FFFFFF"}
         },
         alignment:{
           horizontal:
@@ -7844,18 +7864,23 @@ function triggerWorkbookDownload(
   );
 }
 function excelArgb(value){
-  const rgb=String(value||"")
+  const raw=String(value||"")
     .replace(/^#/,"")
-    .replace(/^FF/i,"")
     .toUpperCase();
 
-  if(!rgb){
+  if(!raw){
     return undefined;
   }
 
-  return rgb.length===6
-    ?`FF${rgb}`
-    :rgb;
+  if(raw.length===8){
+    return raw;
+  }
+
+  if(raw.length===6){
+    return `FF${raw}`;
+  }
+
+  return raw.padStart(8,"F").slice(-8);
 }
 function excelJsFont(sheetJsFont){
   if(!sheetJsFont){
@@ -7897,18 +7922,20 @@ function excelJsFont(sheetJsFont){
 function excelJsFill(sheetJsFill){
   const rgb=
     sheetJsFill?.fgColor?.rgb||
-    sheetJsFill?.patternFgColor?.rgb;
+    sheetJsFill?.patternFgColor?.rgb||
+    sheetJsFill?.bgColor?.rgb;
 
   if(!rgb){
     return undefined;
   }
 
+  const argb=excelArgb(rgb);
+
   return {
     type:"pattern",
     pattern:"solid",
-    fgColor:{
-      argb:excelArgb(rgb)
-    }
+    fgColor:{argb},
+    bgColor:{argb}
   };
 }
 function excelJsBorderSide(side){
