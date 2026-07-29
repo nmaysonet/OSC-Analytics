@@ -5945,6 +5945,17 @@ function renderAll(){
 function maintenanceRequirementLabel(requirement){
   return programDisplayLabel(requirement);
 }
+function storagePathCandidates(path){
+  const candidates=[path];
+
+  if(path==="Frontier DOT(1).xlsx"){
+    candidates.push("Frontier DOT.xlsx");
+  }else if(path==="Frontier DOT.xlsx"){
+    candidates.push("Frontier DOT(1).xlsx");
+  }
+
+  return [...new Set(candidates)];
+}
 async function fetchStorageBuffer(path){
   const configured=
     firebase.app().options.storageBucket||"";
@@ -6003,27 +6014,42 @@ async function fetchStorageBuffer(path){
     }
   }
 
-  for(let attempt=1;attempt<=2;attempt++){
-    for(const bucket of buckets){
-      try{
-        const reference=
-          bucket===configured
-            ?firebase.storage()
-                .ref()
-                .child(path)
-            :firebase.storage()
-                .refFromURL(
-                  `gs://${bucket}/${path}`
-                );
+  const pathCandidates=
+    storagePathCandidates(path);
 
-        const url=await reference.getDownloadURL();
-        return await fetchUrl(url);
-      }catch(error){
-        lastError=error;
-        console.warn(
-          `Storage fetch attempt ${attempt} failed for ${path} in ${bucket}`,
-          error
-        );
+  for(let attempt=1;attempt<=2;attempt++){
+    for(const candidatePath of pathCandidates){
+      for(const bucket of buckets){
+        try{
+          const reference=
+            bucket===configured
+              ?firebase.storage()
+                  .ref()
+                  .child(candidatePath)
+              :firebase.storage()
+                  .refFromURL(
+                    `gs://${bucket}/${candidatePath}`
+                  );
+
+          const url=
+            await reference.getDownloadURL();
+
+          const buffer=await fetchUrl(url);
+
+          if(candidatePath!==path){
+            console.info(
+              `Loaded ${candidatePath} as the fallback for ${path}.`
+            );
+          }
+
+          return buffer;
+        }catch(error){
+          lastError=error;
+          console.warn(
+            `Storage fetch attempt ${attempt} failed for ${candidatePath} in ${bucket}`,
+            error
+          );
+        }
       }
     }
 
@@ -6033,7 +6059,7 @@ async function fetchStorageBuffer(path){
   }
 
   throw new Error(
-    `${path}: ${lastError?.message||"Unknown Firebase Storage error"}`
+    `${path}: none of these Firebase Storage filenames could be loaded: ${pathCandidates.join(", ")}. ${lastError?.message||"Unknown Firebase Storage error"}`
   );
 }
 async function loadPriorSnapshots(dateKey){
@@ -7287,6 +7313,307 @@ function triggerWorkbookDownload(
     1500
   );
 }
+function excelArgb(value){
+  const rgb=String(value||"")
+    .replace(/^#/,"")
+    .replace(/^FF/i,"")
+    .toUpperCase();
+
+  if(!rgb){
+    return undefined;
+  }
+
+  return rgb.length===6
+    ?`FF${rgb}`
+    :rgb;
+}
+function excelJsFont(sheetJsFont){
+  if(!sheetJsFont){
+    return undefined;
+  }
+
+  const font={};
+
+  if(sheetJsFont.name){
+    font.name=sheetJsFont.name;
+  }
+  if(sheetJsFont.sz){
+    font.size=sheetJsFont.sz;
+  }
+  if(sheetJsFont.bold!==undefined){
+    font.bold=Boolean(sheetJsFont.bold);
+  }
+  if(sheetJsFont.italic!==undefined){
+    font.italic=Boolean(sheetJsFont.italic);
+  }
+  if(sheetJsFont.underline){
+    font.underline=
+      sheetJsFont.underline===true
+        ?true
+        :sheetJsFont.underline;
+  }
+  if(sheetJsFont.color?.rgb){
+    font.color={
+      argb:excelArgb(
+        sheetJsFont.color.rgb
+      )
+    };
+  }
+
+  return Object.keys(font).length
+    ?font
+    :undefined;
+}
+function excelJsFill(sheetJsFill){
+  const rgb=
+    sheetJsFill?.fgColor?.rgb||
+    sheetJsFill?.patternFgColor?.rgb;
+
+  if(!rgb){
+    return undefined;
+  }
+
+  return {
+    type:"pattern",
+    pattern:"solid",
+    fgColor:{
+      argb:excelArgb(rgb)
+    }
+  };
+}
+function excelJsBorderSide(side){
+  if(!side?.style){
+    return undefined;
+  }
+
+  const output={
+    style:side.style
+  };
+
+  if(side.color?.rgb){
+    output.color={
+      argb:excelArgb(side.color.rgb)
+    };
+  }
+
+  return output;
+}
+function excelJsBorder(sheetJsBorder){
+  if(!sheetJsBorder){
+    return undefined;
+  }
+
+  const border={};
+
+  ["top","bottom","left","right","diagonal"]
+    .forEach(sideName=>{
+      const side=excelJsBorderSide(
+        sheetJsBorder[sideName]
+      );
+
+      if(side){
+        border[sideName]=side;
+      }
+    });
+
+  return Object.keys(border).length
+    ?border
+    :undefined;
+}
+function excelJsAlignment(sheetJsAlignment){
+  if(!sheetJsAlignment){
+    return undefined;
+  }
+
+  const alignment={};
+
+  [
+    "horizontal",
+    "vertical",
+    "wrapText",
+    "textRotation",
+    "shrinkToFit",
+    "indent"
+  ].forEach(property=>{
+    if(
+      sheetJsAlignment[property]!==undefined
+    ){
+      alignment[property]=
+        sheetJsAlignment[property];
+    }
+  });
+
+  return Object.keys(alignment).length
+    ?alignment
+    :undefined;
+}
+function copySheetJsCellToExcelJs(
+  sourceCell,
+  targetCell
+){
+  if(sourceCell.f){
+    targetCell.value={
+      formula:sourceCell.f,
+      result:sourceCell.v
+    };
+  }else if(sourceCell.t==="d"){
+    targetCell.value=
+      sourceCell.v instanceof Date
+        ?sourceCell.v
+        :parseDate(sourceCell.v);
+  }else if(sourceCell.t==="b"){
+    targetCell.value=
+      Boolean(sourceCell.v);
+  }else if(
+    sourceCell.v===null||
+    sourceCell.v===undefined
+  ){
+    targetCell.value=null;
+  }else{
+    targetCell.value=sourceCell.v;
+  }
+
+  if(sourceCell.l?.Target){
+    targetCell.value={
+      text:String(
+        sourceCell.v??sourceCell.l.Target
+      ),
+      hyperlink:sourceCell.l.Target
+    };
+  }
+
+  if(sourceCell.z){
+    targetCell.numFmt=sourceCell.z;
+  }
+
+  const style=sourceCell.s||{};
+  const font=excelJsFont(style.font);
+  const fill=excelJsFill(style.fill);
+  const border=excelJsBorder(style.border);
+  const alignment=
+    excelJsAlignment(style.alignment);
+
+  if(font){
+    targetCell.font=font;
+  }
+  if(fill){
+    targetCell.fill=fill;
+  }
+  if(border){
+    targetCell.border=border;
+  }
+  if(alignment){
+    targetCell.alignment=alignment;
+  }
+}
+function convertSheetJsWorkbookToExcelJs(
+  sheetJsWorkbook
+){
+  const excelWorkbook=
+    new ExcelJS.Workbook();
+
+  excelWorkbook.creator="OSC+";
+  excelWorkbook.company="Amerit";
+  excelWorkbook.created=new Date();
+  excelWorkbook.modified=new Date();
+
+  sheetJsWorkbook.SheetNames.forEach(
+    sheetName=>{
+      const sourceSheet=
+        sheetJsWorkbook.Sheets[sheetName];
+
+      const targetSheet=
+        excelWorkbook.addWorksheet(
+          sheetName.slice(0,31)
+        );
+
+      (sourceSheet["!cols"]||[])
+        .forEach((column,index)=>{
+          const width=Number(
+            column.wch||
+            column.width||
+            12
+          );
+
+          if(Number.isFinite(width)){
+            targetSheet
+              .getColumn(index+1)
+              .width=Math.max(1,width);
+          }
+        });
+
+      (sourceSheet["!rows"]||[])
+        .forEach((row,index)=>{
+          const height=Number(
+            row.hpt||
+            row.hpx
+          );
+
+          if(Number.isFinite(height)){
+            targetSheet
+              .getRow(index+1)
+              .height=height;
+          }
+        });
+
+      const ref=
+        sourceSheet["!ref"]||"A1:A1";
+      const range=
+        XLSX.utils.decode_range(ref);
+
+      for(
+        let row=range.s.r;
+        row<=range.e.r;
+        row++
+      ){
+        for(
+          let column=range.s.c;
+          column<=range.e.c;
+          column++
+        ){
+          const address=
+            XLSX.utils.encode_cell({
+              r:row,
+              c:column
+            });
+          const sourceCell=
+            sourceSheet[address];
+
+          if(!sourceCell){
+            continue;
+          }
+
+          copySheetJsCellToExcelJs(
+            sourceCell,
+            targetSheet.getCell(
+              row+1,
+              column+1
+            )
+          );
+        }
+      }
+
+      (sourceSheet["!merges"]||[])
+        .forEach(merge=>{
+          targetSheet.mergeCells(
+            merge.s.r+1,
+            merge.s.c+1,
+            merge.e.r+1,
+            merge.e.c+1
+          );
+        });
+
+      if(sourceSheet["!autofilter"]?.ref){
+        targetSheet.autoFilter=
+          sourceSheet["!autofilter"].ref;
+      }
+
+      targetSheet.properties.defaultRowHeight=18;
+    }
+  );
+
+  return excelWorkbook;
+}
 async function writeWorkbookWithTrendCharts(
   workbook,
   filename,
@@ -7297,10 +7624,7 @@ async function writeWorkbookWithTrendCharts(
     trendHistory
   );
 
-  if(
-    typeof ExcelJS==="undefined"||
-    !(trendHistory||[]).length
-  ){
+  if(typeof ExcelJS==="undefined"){
     XLSX.writeFile(
       workbook,
       filename
@@ -7308,27 +7632,25 @@ async function writeWorkbookWithTrendCharts(
     return;
   }
 
-  const baseBuffer=XLSX.write(
-    workbook,
-    {
-      bookType:"xlsx",
-      type:"array"
-    }
-  );
-
+  /*
+    Build the ExcelJS workbook directly from the in-memory worksheets.
+    The prior SheetJS -> XLSX binary -> ExcelJS round-trip caused Excel
+    to report damaged workbook content.
+  */
   const excelWorkbook=
-    new ExcelJS.Workbook();
-
-  await excelWorkbook.xlsx.load(
-    baseBuffer
-  );
+    convertSheetJsWorkbookToExcelJs(
+      workbook
+    );
 
   const worksheet=
     excelWorkbook.getWorksheet(
       "Vended Maintenance Trends"
     );
 
-  if(worksheet){
+  if(
+    worksheet&&
+    (trendHistory||[]).length
+  ){
     const charts=[
       {
         metricKey:"compliance",
@@ -7383,7 +7705,8 @@ async function writeWorkbookWithTrendCharts(
           ext:{
             width:1240,
             height:390
-          }
+          },
+          editAs:"oneCell"
         }
       );
     });
@@ -7404,7 +7727,6 @@ async function writeWorkbookWithTrendCharts(
     filename
   );
 }
-
 async function saveSnapshot(data){
   if(
     !db||
@@ -7596,7 +7918,11 @@ async function loadFromFirebase(){
     );
 
     showWarning([
-      `Unable to load the selected customer source. Firebase returned: ${errorMessage}. Confirm the workbook filename in Storage matches exactly.`
+      `Unable to load ${activeCustomerProfile.label}. Firebase returned: ${errorMessage}`,
+      `Expected customer source workbook(s): ${activeSourcePaths().join(", ")}.`,
+      activeCustomerKey==="frontier"
+        ?"For the DOT source, either Frontier DOT.xlsx or Frontier DOT(1).xlsx is accepted."
+        :"Confirm the workbook filenames in Firebase Storage match exactly."
     ]);
   }
 }
