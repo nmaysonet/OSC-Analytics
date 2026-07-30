@@ -1109,7 +1109,8 @@
     <a class="nav-item" href="index.html#report">OSC+ Analytics</a>
     <a class="nav-item" href="index.html#config">Customer Configuration</a>
     <a class="nav-item active" href="opd.html">Vended Operational Performance</a>
-
+    <a class="nav-item" href="vendor_cov.html">Vendor Coverage</a>
+    
     <div class="sidebar-truck">
       <svg width="150" height="76" viewBox="0 0 120 60" xmlns="http://www.w3.org/2000/svg">
         <line x1="0" y1="57" x2="120" y2="57" stroke="#4a4b50" stroke-width="2" stroke-dasharray="10 5"/>
@@ -1499,7 +1500,42 @@ function showWarning(messages){const el=$("#source-warning");const items=(messag
 function escapeHtml(v){return clean(v).replace(/[&<>'"]/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[ch]));}
 
 function sheetAoa(workbook,predicate){const name=workbook.SheetNames.find(n=>predicate(n.toLowerCase()));if(!name)return {name:"",aoa:[]};return {name,aoa:XLSX.utils.sheet_to_json(workbook.Sheets[name],{header:1,defval:"",raw:true})};}
-function validateHeader(aoa,checks,sheetName,warnings){const header=aoa[0]||[];checks.forEach(([idx,expected])=>{if(!upper(header[idx]).includes(expected)){warnings.push(`${sheetName}: expected ${expected} in column ${XLSX.utils.encode_col(idx)}, found “${clean(header[idx])||"blank"}”. Fallback column positions were still used.`);}});}
+function validateHeader(
+  aoa,
+  checks,
+  sheetName,
+  warnings
+){
+  const header=aoa[0]||[];
+
+  checks.forEach(([index,expected])=>{
+    if(!upper(header[index]).includes(expected)){
+      warnings.push(
+        `${sheetName}: expected ${expected} in column ${XLSX.utils.encode_col(index)}, found “${clean(header[index])||"blank"}”.`
+      );
+    }
+  });
+}
+function validateRequiredHeaders(
+  aoa,
+  requirements,
+  sheetName,
+  warnings
+){
+  const header=aoa[0]||[];
+
+  requirements.forEach(requirement=>{
+    const names=
+      requirement.names||
+      [requirement.label];
+
+    if(headerIndex(header,names,-1)<0){
+      warnings.push(
+        `${sheetName}: required header “${requirement.label}” was not found.`
+      );
+    }
+  });
+}
 function buildRepclassMap(aoa){const map=new Map();for(let i=1;i<aoa.length;i++){const rep=upper(aoa[i]?.[0]);const service=upper(aoa[i]?.[1]);if(rep&&service)map.set(rep,service);}return map;}
 function maintenanceTaskTypes(task,service){
   const text=upper(task);
@@ -1809,8 +1845,8 @@ function parseVroRows(
   }
 
   if(maintenanceRowsMatchedByVin){
-    warnings.push(
-      `${maintenanceRowsMatchedByVin} maintenance row(s) were matched by VIN because the VRO customer branch did not match the source-tab branch.`
+    console.info(
+      `${maintenanceRowsMatchedByVin} maintenance row(s) were correctly matched by VIN despite a different VRO customer branch.`
     );
   }
 
@@ -2113,12 +2149,16 @@ function parseComplianceUnitSheet(aoa,program,sheetName,warnings,assetResolver=n
   const shopIndex=headerIndex(
     header,
     ["GARDA SHOPNAME","SHOPNAME"],
-    2
+    program==="pm"?3:2
   );
   const vinIndex=headerIndex(
     header,
     ["VIN"],
-    program==="ac"?6:5
+    program==="pm"
+      ?7
+      :program==="ac"
+        ?6
+        :5
   );
   const unitIndex=headerIndex(
     header,
@@ -2128,46 +2168,90 @@ function parseComplianceUnitSheet(aoa,program,sheetName,warnings,assetResolver=n
       "UNIT NUMBER",
       "UNIT NO"
     ],
-    program==="ac"?5:4
+    program==="pm"
+      ?6
+      :program==="ac"
+        ?5
+        :4
   );
   const componentIndex=headerIndex(
     header,
-    ["COMPCODE_DESC","COMP CODE DESC"],
-    program==="ac"?7:6
+    [
+      "COMPCODE_DESC",
+      "COMP CODE DESC"
+    ],
+    program==="pm"
+      ?9
+      :program==="ac"
+        ?7
+        :6
   );
   const intervalIndex=headerIndex(
     header,
     ["INTERVAL"],
-    program==="ac"?8:7
+    program==="pm"
+      ?10
+      :program==="ac"
+        ?8
+        :7
   );
   const meterTypeIndex=headerIndex(
     header,
     ["METERTYPE","METER TYPE"],
-    program==="ac"?9:8
+    program==="pm"
+      ?11
+      :program==="ac"
+        ?9
+        :8
   );
   const dueCategoryIndex=headerIndex(
     header,
-    ["DUE CATEGORY"],
-    program==="ac"?10:
-      program==="lts"?-1:9
+    program==="pm"
+      ?[
+          "PM DUE CATEGORY",
+          "DUE CATEGORY"
+        ]
+      :["DUE CATEGORY"],
+    program==="pm"
+      ?12
+      :program==="ac"
+        ?10
+        :program==="lts"
+          ?-1
+          :9
   );
   const duePercentIndex=headerIndex(
     header,
     ["DUEPERCENT","DUE PERCENT"],
-    program==="ac"?12:
-      program==="lts"?10:11
+    program==="pm"
+      ?15
+      :program==="ac"
+        ?12
+        :program==="lts"
+          ?10
+          :11
   );
   const lastDoneIndex=headerIndex(
     header,
     ["LASTDONE","LAST DONE"],
-    program==="ac"?13:
-      program==="lts"?11:12
+    program==="pm"
+      ?16
+      :program==="ac"
+        ?13
+        :program==="lts"
+          ?11
+          :12
   );
   const dueDateIndex=headerIndex(
     header,
     ["DUEDATE","DUE DATE"],
-    program==="ac"?14:
-      program==="lts"?12:13
+    program==="pm"
+      ?17
+      :program==="ac"
+        ?14
+        :program==="lts"
+          ?12
+          :13
   );
 
   const units=new Map();
@@ -3390,21 +3474,101 @@ function parseWorkbook(buffer){
     [8,"VENDOR COVERAGE"],
     [9,"PRIOR WEEK"]
   ],gardaFlash.name,warnings);
-  if(acSheet.aoa.length)validateHeader(acSheet.aoa,[
-    [6,"VIN"],[7,"COMPCODE_DESC"],[8,"INTERVAL"],[9,"METERTYPE"],
-    [10,"DUE CATEGORY"],[12,"DUEPERCENT"]
-  ],acSheet.name,warnings);
-  if(pmSheet.aoa.length)validateHeader(pmSheet.aoa,[
-    [5,"VIN"],[6,"COMPCODE_DESC"],[7,"INTERVAL"],[8,"METERTYPE"],
-    [9,"DUE CATEGORY"],[11,"DUEPERCENT"]
-  ],pmSheet.name,warnings);
-  if(dotSheet.aoa.length)validateHeader(dotSheet.aoa,[
-    [5,"VIN"],[6,"COMPCODE_DESC"],[7,"INTERVAL"],[8,"METERTYPE"],
-    [9,"DUE CATEGORY"],[11,"DUEPERCENT"]
-  ],dotSheet.name,warnings);
-  if(ltsSheet.aoa.length)validateHeader(ltsSheet.aoa,[
-    [5,"VIN"],[6,"COMPCODE_DESC"],[7,"INTERVAL"],[8,"METERTYPE"],[10,"DUEPERCENT"]
-  ],ltsSheet.name,warnings);
+  const standardMaintenanceHeaders=[
+    {
+      label:"GARDA SHOPNAME",
+      names:["GARDA SHOPNAME","SHOPNAME"]
+    },
+    {
+      label:"UNIT",
+      names:[
+        "UNIT",
+        "UNITNUMBER",
+        "UNIT NUMBER",
+        "UNIT NO"
+      ]
+    },
+    {
+      label:"VIN",
+      names:["VIN"]
+    },
+    {
+      label:"COMPCODE_DESC",
+      names:[
+        "COMPCODE_DESC",
+        "COMP CODE DESC"
+      ]
+    },
+    {
+      label:"INTERVAL",
+      names:["INTERVAL"]
+    },
+    {
+      label:"METERTYPE",
+      names:["METERTYPE","METER TYPE"]
+    },
+    {
+      label:"DUEPERCENT",
+      names:["DUEPERCENT","DUE PERCENT"]
+    }
+  ];
+
+  if(acSheet.aoa.length){
+    validateRequiredHeaders(
+      acSheet.aoa,
+      [
+        ...standardMaintenanceHeaders,
+        {
+          label:"DUE CATEGORY",
+          names:["DUE CATEGORY"]
+        }
+      ],
+      acSheet.name,
+      warnings
+    );
+  }
+
+  if(pmSheet.aoa.length){
+    validateRequiredHeaders(
+      pmSheet.aoa,
+      [
+        ...standardMaintenanceHeaders,
+        {
+          label:"PM DUE CATEGORY",
+          names:[
+            "PM DUE CATEGORY",
+            "DUE CATEGORY"
+          ]
+        }
+      ],
+      pmSheet.name,
+      warnings
+    );
+  }
+
+  if(dotSheet.aoa.length){
+    validateRequiredHeaders(
+      dotSheet.aoa,
+      [
+        ...standardMaintenanceHeaders,
+        {
+          label:"DUE CATEGORY",
+          names:["DUE CATEGORY"]
+        }
+      ],
+      dotSheet.name,
+      warnings
+    );
+  }
+
+  if(ltsSheet.aoa.length){
+    validateRequiredHeaders(
+      ltsSheet.aoa,
+      standardMaintenanceHeaders,
+      ltsSheet.name,
+      warnings
+    );
+  }
 
   const assetIdentityResolver=
     buildAssetIdentityResolver({
