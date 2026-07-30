@@ -1,0 +1,2361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#3a3b40">
+  <title>Vendor Coverage Dashboard | OSC+ Analytics</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+  <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-storage.js"></script>
+
+  <style>
+    :root {
+      --sidebar:#3a3b40;
+      --sidebar-hover:#4a4b50;
+      --gold:#ffc600;
+      --gold-hover:#e5b200;
+      --page:#f4f6f9;
+      --panel:#ffffff;
+      --border:#d8dde3;
+      --text:#2f3338;
+      --muted:#6b7280;
+      --blue:#1f4e78;
+      --blue-dark:#173a59;
+      --section:#e8edf2;
+      --total:#d9e2ec;
+      --green:#16794a;
+      --red:#b42318;
+      --orange:#c55a11;
+      --amber:#9a7200;
+      --shadow:0 2px 8px rgba(20,30,45,.07);
+    }
+
+    * { box-sizing:border-box; }
+    html, body { height:100%; margin:0; }
+
+    body {
+      display:flex;
+      overflow:hidden;
+      background:var(--page);
+      color:var(--text);
+      font-family:"Raleway","Segoe UI",Arial,sans-serif;
+    }
+
+    button, input, select { font:inherit; }
+    button { cursor:pointer; }
+
+    #login-overlay {
+      position:fixed;
+      inset:0;
+      z-index:10000;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:var(--sidebar);
+    }
+
+    .login-box {
+      width:350px;
+      padding:38px;
+      border-radius:8px;
+      background:#fff;
+      box-shadow:0 14px 35px rgba(0,0,0,.35);
+      text-align:center;
+    }
+
+    .login-box h2 {
+      margin:15px 0 20px;
+      font-size:24px;
+      font-weight:900;
+    }
+
+    .login-box input {
+      width:100%;
+      height:44px;
+      margin-bottom:12px;
+      padding:0 12px;
+      border:1px solid #cbd2da;
+      border-radius:5px;
+      font-size:15px;
+    }
+
+    .login-box button {
+      width:100%;
+      height:42px;
+      border:0;
+      border-radius:5px;
+      background:var(--gold);
+      color:#252525;
+      font-size:13px;
+      font-weight:900;
+    }
+
+    .login-box button:hover { background:var(--gold-hover); }
+
+    .login-error {
+      display:none;
+      margin-bottom:10px;
+      color:var(--red);
+      font-size:12px;
+      font-weight:800;
+    }
+
+    .sidebar {
+      width:280px;
+      flex:0 0 280px;
+      display:flex;
+      flex-direction:column;
+      background:var(--sidebar);
+      color:#fff;
+      box-shadow:2px 0 8px rgba(0,0,0,.12);
+    }
+
+    .brand {
+      min-height:100px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap:12px;
+      border-bottom:1px solid #292a2e;
+    }
+
+    .brand-copy {
+      display:flex;
+      flex-direction:column;
+      align-items:flex-start;
+      justify-content:center;
+      line-height:1;
+    }
+
+    .brand-name {
+      font-size:38px;
+      font-weight:900;
+      letter-spacing:1.2px;
+    }
+
+    .brand-plus { color:var(--gold); }
+
+    .brand-subtitle {
+      margin-top:7px;
+      color:var(--gold);
+      font-size:12px;
+      font-weight:900;
+      letter-spacing:2.2px;
+      text-transform:uppercase;
+    }
+
+    .wheel {
+      width:44px;
+      height:44px;
+      position:relative;
+      display:inline-block;
+      border:7px solid var(--gold);
+      border-radius:50%;
+    }
+
+    .wheel::before,
+    .wheel::after {
+      content:"";
+      position:absolute;
+      left:50%;
+      top:50%;
+      background:var(--gold);
+      transform:translate(-50%,-50%);
+    }
+
+    .wheel::before { width:31px; height:6px; }
+    .wheel::after { width:6px; height:31px; }
+
+    .sidebar a.nav-item {
+      display:block;
+      text-decoration:none;
+    }
+
+    .nav-item {
+      padding:16px 20px;
+      border-bottom:1px solid #4b4c51;
+      border-left:4px solid transparent;
+      color:#fff;
+      font-size:14px;
+      font-weight:800;
+      transition:.15s;
+    }
+
+    .nav-item:hover {
+      background:var(--sidebar-hover);
+      color:var(--gold);
+    }
+
+    .nav-item.active {
+      border-left-color:var(--gold);
+      background:var(--sidebar-hover);
+      color:var(--gold);
+    }
+
+    .sidebar-truck {
+      margin-top:auto;
+      padding:24px 20px 22px;
+      border-top:1px solid #4b4c51;
+      background:#2a2b30;
+      text-align:center;
+    }
+
+    .app {
+      min-width:0;
+      flex:1;
+      display:flex;
+      flex-direction:column;
+      overflow:hidden;
+    }
+
+    .topbar {
+      min-height:86px;
+      flex:0 0 86px;
+      padding:16px 26px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:24px;
+      border-bottom:1px solid var(--border);
+      background:#fff;
+      box-shadow:0 2px 5px rgba(0,0,0,.04);
+    }
+
+    .title h1 {
+      margin:0;
+      font-size:27px;
+      font-weight:850;
+    }
+
+    .title p {
+      margin:5px 0 0;
+      color:var(--muted);
+      font-size:11px;
+      font-weight:700;
+    }
+
+    .topbar-actions {
+      display:flex;
+      align-items:center;
+      gap:9px;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+    }
+
+    .btn {
+      border:0;
+      border-radius:5px;
+      padding:10px 14px;
+      font-size:11px;
+      font-weight:900;
+      transition:.15s;
+    }
+
+    .btn:hover { transform:translateY(-1px); }
+    .btn:disabled { cursor:not-allowed; opacity:.45; transform:none; }
+    .btn-gold { background:var(--gold); color:#222; }
+    .btn-gold:hover { background:var(--gold-hover); }
+    .btn-light { border:1px solid #cbd5e1; background:#e2e8f0; color:#334155; }
+
+    .workspace {
+      flex:1;
+      min-height:0;
+      overflow:auto;
+      padding:22px 26px 32px;
+    }
+
+    .source-warning {
+      display:none;
+      margin-bottom:14px;
+      padding:10px 12px;
+      border:1px solid #ebca75;
+      border-left:4px solid var(--gold-hover);
+      border-radius:6px;
+      background:#fff8e6;
+      color:#795c0d;
+      font-size:11px;
+      font-weight:750;
+      line-height:1.45;
+    }
+
+    .report-panel {
+      overflow:hidden;
+      border:1px solid var(--border);
+      border-top:4px solid var(--gold);
+      border-radius:8px;
+      background:var(--panel);
+      box-shadow:var(--shadow);
+    }
+
+    .panel-head {
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:16px;
+      padding:14px 16px;
+      border-bottom:1px solid var(--border);
+    }
+
+    .panel-head h2 {
+      margin:0;
+      font-size:17px;
+      font-weight:850;
+    }
+
+    .refresh {
+      color:var(--muted);
+      font-size:11px;
+      font-weight:800;
+      text-align:right;
+    }
+
+    .panel-body {
+      padding:16px;
+      background:#f8fafc;
+    }
+
+    .status-strip {
+      display:grid;
+      grid-template-columns:minmax(0,1fr) auto;
+      gap:14px;
+      align-items:center;
+      margin-bottom:14px;
+      padding:11px 13px;
+      border:1px solid var(--border);
+      border-radius:6px;
+      background:#fff;
+    }
+
+    .status-main {
+      min-width:0;
+      display:flex;
+      align-items:center;
+      gap:10px;
+    }
+
+    .status-dot {
+      width:10px;
+      height:10px;
+      flex:0 0 auto;
+      border-radius:50%;
+      background:#94a3b8;
+      box-shadow:0 0 0 4px rgba(148,163,184,.14);
+    }
+
+    .status-dot.loading {
+      background:#d89200;
+      box-shadow:0 0 0 4px rgba(216,146,0,.14);
+      animation:pulse 1.2s infinite;
+    }
+
+    .status-dot.ok {
+      background:var(--green);
+      box-shadow:0 0 0 4px rgba(22,121,74,.13);
+    }
+
+    .status-dot.error {
+      background:var(--red);
+      box-shadow:0 0 0 4px rgba(180,35,24,.13);
+    }
+
+    @keyframes pulse { 50% { opacity:.45; } }
+
+    .status-text { min-width:0; }
+
+    .status-text strong {
+      display:block;
+      color:#26323f;
+      font-size:12px;
+    }
+
+    .status-text span {
+      display:block;
+      margin-top:2px;
+      overflow:hidden;
+      color:var(--muted);
+      font-size:11px;
+      white-space:nowrap;
+      text-overflow:ellipsis;
+    }
+
+    .status-meta {
+      display:flex;
+      justify-content:flex-end;
+      gap:7px;
+      flex-wrap:wrap;
+    }
+
+    .pill {
+      display:inline-flex;
+      align-items:center;
+      padding:5px 8px;
+      border:1px solid #d9e0e6;
+      border-radius:999px;
+      background:#eef2f5;
+      color:#53606b;
+      font-size:10px;
+      font-weight:800;
+      white-space:nowrap;
+    }
+
+    .pill.good {
+      border-color:#bce2cc;
+      background:#edf8f2;
+      color:#237149;
+    }
+
+    .view-tabs {
+      display:flex;
+      gap:6px;
+      margin-bottom:16px;
+      padding:5px;
+      border:1px solid var(--border);
+      border-radius:7px;
+      background:#fff;
+      width:max-content;
+      max-width:100%;
+    }
+
+    .view-tab {
+      min-width:120px;
+      padding:9px 13px;
+      border:0;
+      border-radius:5px;
+      background:transparent;
+      color:#52606d;
+      font-size:11px;
+      font-weight:900;
+    }
+
+    .view-tab:hover { background:#eef2f5; }
+    .view-tab.active { background:var(--gold); color:#222; }
+
+    .page-view { display:none; }
+    .page-view.active { display:block; }
+
+    .kpi-grid {
+      display:grid;
+      grid-template-columns:repeat(4,minmax(0,1fr));
+      gap:14px;
+      margin-bottom:16px;
+    }
+
+    .kpi-card {
+      position:relative;
+      min-height:112px;
+      padding:17px 18px;
+      overflow:hidden;
+      border:1px solid var(--border);
+      border-radius:7px;
+      background:#fff;
+      box-shadow:0 1px 3px rgba(15,23,42,.05);
+    }
+
+    .kpi-card::before {
+      content:"";
+      position:absolute;
+      inset:0 auto 0 0;
+      width:5px;
+      background:var(--gold);
+    }
+
+    .kpi-label {
+      color:#53606b;
+      font-size:11px;
+      font-weight:900;
+      text-transform:uppercase;
+      letter-spacing:.35px;
+    }
+
+    .kpi-value {
+      margin-top:8px;
+      color:var(--blue);
+      font-size:29px;
+      font-weight:900;
+      font-variant-numeric:tabular-nums;
+    }
+
+    .kpi-helper {
+      margin-top:5px;
+      color:var(--muted);
+      font-size:10px;
+      font-weight:650;
+    }
+
+    .dashboard-grid {
+      display:grid;
+      grid-template-columns:minmax(0,1.5fr) minmax(310px,.75fr);
+      gap:16px;
+      margin-bottom:16px;
+    }
+
+    .card {
+      overflow:hidden;
+      border:1px solid var(--border);
+      border-radius:7px;
+      background:#fff;
+      box-shadow:0 1px 3px rgba(15,23,42,.05);
+    }
+
+    .card-head {
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:16px;
+      padding:13px 15px;
+      border-bottom:1px solid var(--border);
+      background:#fff;
+    }
+
+    .card-head h3 {
+      margin:0;
+      font-size:15px;
+      font-weight:900;
+    }
+
+    .card-head p {
+      margin:4px 0 0;
+      color:var(--muted);
+      font-size:10px;
+      font-weight:650;
+    }
+
+    .card-body { padding:15px; }
+
+    .gap-chart { display:grid; gap:11px; }
+
+    .gap-row {
+      display:grid;
+      grid-template-columns:minmax(190px,.95fr) minmax(160px,1.45fr) 36px;
+      align-items:center;
+      gap:11px;
+    }
+
+    .gap-label {
+      overflow:hidden;
+      color:#334155;
+      font-size:11px;
+      font-weight:750;
+      white-space:nowrap;
+      text-overflow:ellipsis;
+    }
+
+    .gap-track {
+      height:10px;
+      overflow:hidden;
+      border-radius:999px;
+      background:#e7ebef;
+    }
+
+    .gap-bar {
+      height:100%;
+      border-radius:999px;
+      background:var(--gold);
+    }
+
+    .gap-value {
+      color:#26323f;
+      text-align:right;
+      font-size:11px;
+      font-weight:900;
+    }
+
+    .priority-summary { display:grid; gap:9px; }
+
+    .priority-item {
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      padding:11px 12px;
+      border:1px solid var(--border);
+      border-radius:6px;
+      background:#f8fafc;
+    }
+
+    .priority-label {
+      display:flex;
+      align-items:center;
+      gap:9px;
+      color:#334155;
+      font-size:11px;
+      font-weight:900;
+    }
+
+    .priority-dot {
+      width:9px;
+      height:9px;
+      border-radius:50%;
+    }
+
+    .priority-count {
+      color:#26323f;
+      font-size:18px;
+      font-weight:900;
+    }
+
+    .filter-toolbar {
+      display:flex;
+      align-items:flex-end;
+      justify-content:space-between;
+      gap:14px;
+      flex-wrap:wrap;
+      padding:13px 15px;
+      border-bottom:1px solid var(--border);
+      background:#fff;
+    }
+
+    .filter-copy h3 {
+      margin:0;
+      font-size:15px;
+      font-weight:900;
+    }
+
+    .filter-copy p {
+      margin:4px 0 0;
+      color:var(--muted);
+      font-size:10px;
+      font-weight:650;
+    }
+
+    .filter-row {
+      display:flex;
+      align-items:flex-end;
+      gap:8px;
+      flex-wrap:wrap;
+    }
+
+    .field {
+      display:flex;
+      flex-direction:column;
+      gap:4px;
+    }
+
+    .field label {
+      color:var(--muted);
+      font-size:9px;
+      font-weight:900;
+      letter-spacing:.45px;
+      text-transform:uppercase;
+    }
+
+    .field input,
+    .field select {
+      height:37px;
+      padding:0 10px;
+      border:1px solid #cbd2da;
+      border-radius:5px;
+      background:#fff;
+      color:var(--text);
+      font-size:11px;
+      font-weight:700;
+      outline:none;
+    }
+
+    .field input { width:260px; }
+    .field select { min-width:145px; }
+
+    .field input:focus,
+    .field select:focus {
+      border-color:#a58a1c;
+      box-shadow:0 0 0 3px rgba(255,198,0,.18);
+    }
+
+    .table-wrap {
+      width:100%;
+      overflow:auto;
+      max-height:calc(100vh - 280px);
+    }
+
+    table {
+      width:100%;
+      border-collapse:separate;
+      border-spacing:0;
+      table-layout:fixed;
+      font-size:12px;
+    }
+
+    .coverage-table { min-width:1120px; }
+
+    .coverage-table thead th {
+      position:sticky;
+      top:0;
+      z-index:4;
+      padding:9px 9px;
+      border-right:1px solid #b9c4cf;
+      border-bottom:2px solid #9ba8b5;
+      background:#d9dde1;
+      color:#111;
+      text-align:left;
+      vertical-align:middle;
+      font-size:9.5px;
+      font-weight:900;
+      line-height:1.2;
+      white-space:nowrap;
+    }
+
+    .coverage-table thead th:last-child { border-right:0; }
+
+    .coverage-table tbody td {
+      height:34px;
+      padding:7px 9px;
+      border-right:1px solid var(--border);
+      border-bottom:1px solid var(--border);
+      background:#fff;
+      color:#20262d;
+      vertical-align:middle;
+      text-align:left;
+      font-size:11px;
+      font-weight:550;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      font-variant-numeric:tabular-nums;
+    }
+
+    .coverage-table tbody td:last-child { border-right:0; }
+    .coverage-table tbody tr.data-row:nth-child(4n+3) td { background:#f9fafb; }
+    .coverage-table tbody tr.data-row:hover td { background:#fffbea; }
+
+    .num { text-align:right!important; }
+    .location-col { width:285px; }
+    .msa-col { width:250px; }
+    .small-col { width:84px; }
+    .priority-col { width:102px; }
+
+    .shop-toggle {
+      max-width:100%;
+      padding:0;
+      overflow:hidden;
+      border:0;
+      background:transparent;
+      color:#0070c0;
+      text-align:left;
+      font-size:11px;
+      font-weight:850;
+      white-space:nowrap;
+      text-overflow:ellipsis;
+    }
+
+    .shop-toggle:hover { text-decoration:underline; }
+    .chevron { display:inline-block; width:16px; color:#65717c; }
+
+    .vendor-count {
+      display:inline-flex;
+      min-width:31px;
+      justify-content:center;
+      padding:4px 8px;
+      border:1px solid #ecd575;
+      border-radius:999px;
+      background:#fff7d1;
+      color:#5c4a00;
+      font-size:10px;
+      font-weight:900;
+    }
+
+    .vendor-count.zero {
+      border-color:#d8dde3;
+      background:#eef1f4;
+      color:#65717c;
+    }
+
+    .priority-badge {
+      display:inline-flex;
+      min-width:72px;
+      justify-content:center;
+      padding:5px 9px;
+      border-radius:999px;
+      color:#fff;
+      font-size:9.5px;
+      font-weight:900;
+    }
+
+    .priority-critical { background:var(--red); }
+    .priority-high { background:var(--orange); }
+    .priority-monitor { background:var(--amber); }
+    .priority-healthy { background:var(--green); }
+
+    .detail-row td {
+      padding:0!important;
+      border-bottom:1px solid var(--border);
+      background:#eef2f5!important;
+      overflow:visible!important;
+    }
+
+    .shop-detail {
+      padding:14px 16px 16px;
+      border-left:5px solid var(--gold);
+    }
+
+    .shop-detail-header {
+      display:flex;
+      flex-wrap:wrap;
+      gap:15px;
+      margin-bottom:12px;
+      color:#52606d;
+      font-size:10px;
+      font-weight:700;
+    }
+
+    .vendor-sections {
+      display:grid;
+      grid-template-columns:repeat(3,minmax(0,1fr));
+      gap:12px;
+    }
+
+    .vendor-section {
+      overflow:hidden;
+      border:1px solid var(--border);
+      border-radius:6px;
+      background:#fff;
+    }
+
+    .vendor-section summary {
+      padding:10px 11px;
+      cursor:pointer;
+      background:#f8fafc;
+      color:#334155;
+      font-size:10px;
+      font-weight:900;
+    }
+
+    .vendor-grid {
+      display:grid;
+      gap:6px;
+      max-height:230px;
+      overflow-y:auto;
+      padding:9px;
+    }
+
+    .vendor-chip {
+      padding:7px 8px;
+      border-left:4px solid var(--gold);
+      border-radius:4px;
+      background:#f4f6f8;
+      color:#334155;
+      font-size:10px;
+      font-weight:700;
+      white-space:normal;
+    }
+
+    .empty-vendors,
+    .empty-state {
+      padding:18px;
+      color:var(--muted);
+      text-align:center;
+      font-size:11px;
+      font-weight:750;
+    }
+
+    .service-badge,
+    .status-badge {
+      display:inline-flex;
+      padding:5px 9px;
+      border-radius:999px;
+      font-size:9.5px;
+      font-weight:900;
+    }
+
+    .service-badge {
+      border:1px solid #cbd5e1;
+      background:#e8eef5;
+      color:#334155;
+    }
+
+    .status-badge {
+      border:1px solid #bce2cc;
+      background:#edf8f2;
+      color:#237149;
+    }
+
+    @media (max-width:1120px) {
+      .kpi-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+      .dashboard-grid { grid-template-columns:1fr; }
+    }
+
+    @media (max-width:900px) {
+      .sidebar { width:210px; flex-basis:210px; }
+      .brand-name { font-size:30px; }
+      .topbar {
+        height:auto;
+        flex-basis:auto;
+        align-items:flex-start;
+        flex-direction:column;
+      }
+      .topbar-actions { width:100%; justify-content:flex-start; }
+      .workspace { padding:16px; }
+      .status-strip { grid-template-columns:1fr; }
+      .status-meta { justify-content:flex-start; }
+      .vendor-sections { grid-template-columns:1fr; }
+    }
+
+    @media (max-width:680px) {
+      body { display:block; overflow:auto; }
+      .sidebar { width:100%; height:auto; }
+      .sidebar-truck { display:none; }
+      .app { min-height:100vh; overflow:visible; }
+      .workspace { overflow:visible; }
+      .kpi-grid { grid-template-columns:1fr; }
+      .view-tabs { width:100%; }
+      .view-tab { min-width:0; flex:1; }
+      .filter-row,
+      .field,
+      .field input,
+      .field select { width:100%; }
+      .gap-row { grid-template-columns:minmax(120px,1fr) 90px 32px; }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="login-overlay">
+    <form class="login-box" id="login-form">
+      <span class="wheel" aria-hidden="true"></span>
+      <h2>OSC+ Login</h2>
+      <div id="login-error" class="login-error">Incorrect password</div>
+      <input id="login-password" type="password" autocomplete="current-password" placeholder="Enter Password">
+      <button type="submit">ENTER</button>
+    </form>
+  </div>
+
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="wheel" aria-hidden="true"></span>
+      <div class="brand-copy">
+        <span class="brand-name">OSC<span class="brand-plus">+</span></span>
+        <span class="brand-subtitle">Analytics</span>
+      </div>
+    </div>
+
+    <a class="nav-item" href="index.html#report">OSC+ Analytics</a>
+    <a class="nav-item" href="index.html#config">Customer Configuration</a>
+    <a class="nav-item" href="opd.html">Vended Operational Performance</a>
+    <a class="nav-item active" href="vendor_cov.html">Vendor Coverage</a>
+
+    <div class="sidebar-truck">
+      <svg width="150" height="76" viewBox="0 0 120 60" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <line x1="0" y1="57" x2="120" y2="57" stroke="#4a4b50" stroke-width="2" stroke-dasharray="10 5"/>
+        <rect x="5" y="15" width="70" height="35" fill="var(--gold)" rx="3"/>
+        <path d="M78 25 H 92 L 105 35 V 50 H 78 Z" fill="var(--gold)"/>
+        <path d="M82 28 H 90 L 98 35 H 82 Z" fill="#2a2b30"/>
+        <rect x="75" y="42" width="3" height="4" fill="#888"/>
+        <line x1="15" y1="25" x2="65" y2="25" stroke="#c49a1d" stroke-width="1.5"/>
+        <circle cx="25" cy="50" r="7" fill="#111" stroke="#888" stroke-width="1.5"/>
+        <circle cx="25" cy="50" r="2" fill="#888"/>
+        <circle cx="60" cy="50" r="7" fill="#111" stroke="#888" stroke-width="1.5"/>
+        <circle cx="60" cy="50" r="2" fill="#888"/>
+        <circle cx="91" cy="50" r="7" fill="#111" stroke="#888" stroke-width="1.5"/>
+        <circle cx="91" cy="50" r="2" fill="#888"/>
+      </svg>
+    </div>
+  </aside>
+
+  <main class="app">
+    <header class="topbar">
+      <div class="title">
+        <h1 id="page-title">Vendor Coverage Dashboard</h1>
+        <p id="page-description">Monitor vendor availability, coverage gaps, and recruiting priorities.</p>
+      </div>
+
+      <div class="topbar-actions">
+        <button class="btn btn-light" id="refresh-btn" disabled>Refresh Workbook</button>
+        <button class="btn btn-gold" id="export-btn" disabled>Export Current View</button>
+      </div>
+    </header>
+
+    <section class="workspace" id="workspace">
+      <div id="source-warning" class="source-warning"></div>
+
+      <div class="report-panel">
+        <div class="panel-head">
+          <h2>Vendor Network Planning</h2>
+          <span class="refresh" id="updated-pill">Connecting to Firebase...</span>
+        </div>
+
+        <div class="panel-body">
+          <div class="status-strip">
+            <div class="status-main">
+              <div class="status-dot loading" id="status-dot"></div>
+              <div class="status-text">
+                <strong id="status-title">Waiting for Firebase authentication</strong>
+                <span id="status-detail">The dashboard loads vendor_sourcing.xlsx automatically after sign-in.</span>
+              </div>
+            </div>
+            <div class="status-meta">
+              <span class="pill" id="location-pill">Locations —</span>
+              <span class="pill" id="asset-pill">Assets —</span>
+              <span class="pill" id="source-pill">vendor_sourcing.xlsx</span>
+            </div>
+          </div>
+
+          <div class="view-tabs" role="tablist" aria-label="Vendor coverage views">
+            <button class="view-tab active" data-view="dashboard" role="tab">Dashboard</button>
+            <button class="view-tab" data-view="shops" role="tab">Shop Coverage</button>
+            <button class="view-tab" data-view="recruiting" role="tab">Recruiting</button>
+          </div>
+
+          <section id="dashboard-view" class="page-view active">
+            <div id="kpi-grid" class="kpi-grid"></div>
+
+            <div class="dashboard-grid">
+              <section class="card">
+                <div class="card-head">
+                  <div>
+                    <h3>Priority Recruiting Locations</h3>
+                    <p>Locations with the largest combined ERS, PM, and Vended vendor gaps.</p>
+                  </div>
+                </div>
+                <div class="card-body">
+                  <div id="gap-chart" class="gap-chart"></div>
+                </div>
+              </section>
+
+              <section class="card">
+                <div class="card-head">
+                  <div>
+                    <h3>Priority Summary</h3>
+                    <p>Location count by planning priority.</p>
+                  </div>
+                </div>
+                <div class="card-body">
+                  <div id="priority-summary" class="priority-summary"></div>
+                </div>
+              </section>
+            </div>
+
+            <section class="card">
+              <div class="filter-toolbar">
+                <div class="filter-copy">
+                  <h3>Highest-Priority Shop Locations</h3>
+                  <p>Expand a row to view the available vendors by service.</p>
+                </div>
+                <button class="btn btn-light" data-view-jump="shops">View All Shops</button>
+              </div>
+              <div class="table-wrap">
+                <table class="coverage-table">
+                  <thead>
+                    <tr>
+                      <th class="location-col">Shop Location</th>
+                      <th class="msa-col">MSA</th>
+                      <th class="small-col num">Assets</th>
+                      <th class="small-col num">ERS Vendors</th>
+                      <th class="small-col num">PM Vendors</th>
+                      <th class="small-col num">Vended Vendors</th>
+                      <th class="small-col num">Total Gap</th>
+                      <th class="small-col num">Coverage</th>
+                      <th class="priority-col">Priority</th>
+                    </tr>
+                  </thead>
+                  <tbody id="dashboard-table-body"></tbody>
+                </table>
+              </div>
+            </section>
+          </section>
+
+          <section id="shops-view" class="page-view">
+            <section class="card">
+              <div class="filter-toolbar">
+                <div class="filter-copy">
+                  <h3>Shop Coverage</h3>
+                  <p>Search by shop, MSA, or vendor name and expand a row for vendor details.</p>
+                </div>
+
+                <div class="filter-row">
+                  <div class="field">
+                    <label for="shop-search">Search</label>
+                    <input id="shop-search" type="search" placeholder="Shop, MSA, or vendor">
+                  </div>
+                  <div class="field">
+                    <label for="shop-priority-filter">Priority</label>
+                    <select id="shop-priority-filter">
+                      <option value="">All Priorities</option>
+                      <option value="Critical">Critical</option>
+                      <option value="High">High</option>
+                      <option value="Monitor">Monitor</option>
+                      <option value="Healthy">Healthy</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label for="shop-service-filter">Vendor Availability</label>
+                    <select id="shop-service-filter">
+                      <option value="">All Services</option>
+                      <option value="ERS">ERS Vendors Available</option>
+                      <option value="PM">PM Vendors Available</option>
+                      <option value="Vended">Vended Vendors Available</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div class="table-wrap">
+                <table class="coverage-table">
+                  <thead>
+                    <tr>
+                      <th class="location-col">Shop Location</th>
+                      <th class="msa-col">MSA</th>
+                      <th class="small-col num">Assets</th>
+                      <th class="small-col num">ERS</th>
+                      <th class="small-col num">PM</th>
+                      <th class="small-col num">Vended</th>
+                      <th class="small-col num">Gap</th>
+                      <th class="small-col num">Coverage</th>
+                      <th class="priority-col">Priority</th>
+                    </tr>
+                  </thead>
+                  <tbody id="shops-table-body"></tbody>
+                </table>
+              </div>
+            </section>
+          </section>
+
+          <section id="recruiting-view" class="page-view">
+            <section class="card">
+              <div class="filter-toolbar">
+                <div class="filter-copy">
+                  <h3>Recruiting Needs</h3>
+                  <p>Each row represents an open service-level vendor gap from MSA Planning.</p>
+                </div>
+
+                <div class="filter-row">
+                  <div class="field">
+                    <label for="recruiting-search">Search</label>
+                    <input id="recruiting-search" type="search" placeholder="Shop or MSA">
+                  </div>
+                  <div class="field">
+                    <label for="service-filter">Service</label>
+                    <select id="service-filter">
+                      <option value="">All Services</option>
+                      <option value="ERS">ERS</option>
+                      <option value="PM">PM</option>
+                      <option value="Vended">Vended</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label for="status-filter">Status</label>
+                    <select id="status-filter">
+                      <option value="">All Statuses</option>
+                      <option value="Open">Open</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div class="table-wrap">
+                <table class="coverage-table">
+                  <thead>
+                    <tr>
+                      <th class="priority-col">Priority</th>
+                      <th class="location-col">Shop Location</th>
+                      <th class="msa-col">MSA</th>
+                      <th class="small-col">Service</th>
+                      <th class="small-col num">Gap</th>
+                      <th class="small-col">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody id="recruiting-table-body"></tbody>
+                </table>
+              </div>
+            </section>
+          </section>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    "use strict";
+
+    const FIREBASE_CONFIG = {
+      apiKey:"AIzaSyCr3VAldI-pPCb7APx3rJAEZvf_nl0iz1g",
+      authDomain:"workflow-dashboard-e6134.firebaseapp.com",
+      databaseURL:"https://workflow-dashboard-e6134-default-rtdb.firebaseio.com",
+      projectId:"workflow-dashboard-e6134",
+      storageBucket:"workflow-dashboard-e6134.firebasestorage.app",
+      messagingSenderId:"641710248116",
+      appId:"1:641710248116:web:1546701879d573041447e1"
+    };
+
+    const MASTER_EMAIL = "maintenance@ameritfleet.com";
+    const WORKBOOK_PATH = "vendor_sourcing.xlsx";
+    const AUTO_REFRESH_MS = 15 * 60 * 1000;
+
+    const state = {
+      data:null,
+      activeView:"dashboard",
+      expanded:new Set(),
+      lastLoadedAt:null
+    };
+
+    const pageContent = {
+      dashboard:{
+        title:"Vendor Coverage Dashboard",
+        description:"Monitor vendor availability, coverage gaps, and recruiting priorities."
+      },
+      shops:{
+        title:"Shop Coverage",
+        description:"Review current ERS, PM, and Vended vendors for every modeled location."
+      },
+      recruiting:{
+        title:"Recruiting Needs",
+        description:"Prioritize the open service-level vendor gaps calculated in vendor_sourcing.xlsx."
+      }
+    };
+
+    const $ = selector => document.querySelector(selector);
+
+    function initialize() {
+      bindUi();
+
+      if (!firebase.apps.length) {
+        firebase.initializeApp(FIREBASE_CONFIG);
+      }
+
+      firebase.auth().onAuthStateChanged(user => {
+        if (user) {
+          $("#login-overlay").style.display = "none";
+          $("#refresh-btn").disabled = false;
+          loadFromFirebase();
+        } else {
+          $("#login-overlay").style.display = "flex";
+          $("#refresh-btn").disabled = true;
+          $("#export-btn").disabled = true;
+          setStatus(
+            "loading",
+            "Waiting for Firebase authentication",
+            "Enter the OSC+ password to load vendor_sourcing.xlsx from Firebase Storage."
+          );
+        }
+      });
+    }
+
+    function bindUi() {
+      document.querySelectorAll(".view-tab").forEach(button => {
+        button.addEventListener("click", () => switchView(button.dataset.view));
+      });
+
+      document.querySelectorAll("[data-view-jump]").forEach(button => {
+        button.addEventListener("click", () => switchView(button.dataset.viewJump));
+      });
+
+      $("#shop-search").addEventListener("input", renderShops);
+      $("#shop-priority-filter").addEventListener("change", renderShops);
+      $("#shop-service-filter").addEventListener("change", renderShops);
+      $("#recruiting-search").addEventListener("input", renderRecruiting);
+      $("#service-filter").addEventListener("change", renderRecruiting);
+      $("#status-filter").addEventListener("change", renderRecruiting);
+
+      $("#dashboard-table-body").addEventListener("click", handleShopToggle);
+      $("#shops-table-body").addEventListener("click", handleShopToggle);
+
+      $("#refresh-btn").addEventListener("click", loadFromFirebase);
+      $("#export-btn").addEventListener("click", exportCurrentView);
+
+      $("#login-form").addEventListener("submit", async event => {
+        event.preventDefault();
+        const error = $("#login-error");
+        error.style.display = "none";
+
+        try {
+          await firebase.auth().signInWithEmailAndPassword(
+            MASTER_EMAIL,
+            $("#login-password").value
+          );
+        } catch (authError) {
+          console.error(authError);
+          error.textContent =
+            authError.message ||
+            "Incorrect password or Firebase authentication failed.";
+          error.style.display = "block";
+        }
+      });
+    }
+
+    async function loadFromFirebase() {
+      if (!firebase.auth().currentUser) return;
+
+      $("#refresh-btn").disabled = true;
+      $("#export-btn").disabled = true;
+      hideWarning();
+      setStatus(
+        "loading",
+        "Loading vendor coverage workbook",
+        `Fetching ${WORKBOOK_PATH} from the OSC+ Firebase Storage bucket.`
+      );
+
+      try {
+        const buffer = await fetchWorkbookBuffer();
+        const parsed = parseWorkbook(buffer);
+
+        state.data = parsed;
+        state.expanded.clear();
+        state.lastLoadedAt = new Date();
+
+        renderApplication();
+        renderSourceWarnings(parsed.warnings || []);
+
+        $("#location-pill").textContent =
+          `${formatNumber(parsed.summary.markets)} locations`;
+        $("#location-pill").classList.add("good");
+
+        $("#asset-pill").textContent =
+          `${formatNumber(parsed.summary.activeAssets)} active assets`;
+        $("#asset-pill").classList.add("good");
+
+        $("#updated-pill").textContent =
+          `Updated ${state.lastLoadedAt.toLocaleString()}`;
+
+        setStatus(
+          "ok",
+          "Vendor coverage workbook loaded",
+          `Parsed MSA Planning and Vendor Inputs from ${WORKBOOK_PATH}.`
+        );
+
+        $("#export-btn").disabled = false;
+      } catch (error) {
+        console.error(error);
+        showWarning(
+          `Unable to load vendor coverage data. ${error.message || error}`
+        );
+        setStatus(
+          "error",
+          "Vendor coverage load failed",
+          error.message || String(error)
+        );
+      } finally {
+        $("#refresh-btn").disabled = false;
+      }
+    }
+
+    async function fetchWorkbookBuffer() {
+      const configured = firebase.app().options.storageBucket || "";
+      const buckets = [...new Set([
+        configured,
+        "workflow-dashboard-e6134.firebasestorage.app",
+        "workflow-dashboard-e6134.appspot.com"
+      ].filter(Boolean))];
+
+      let lastError = null;
+
+      async function fetchUrl(url) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 30000);
+
+        try {
+          const separator = url.includes("?") ? "&" : "?";
+          const response = await fetch(
+            `${url}${separator}_=${Date.now()}`,
+            { cache:"no-store", signal:controller.signal }
+          );
+
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+
+          const data = await response.arrayBuffer();
+          const signature = new Uint8Array(data.slice(0, 2));
+
+          if (
+            data.byteLength < 4 ||
+            signature[0] !== 0x50 ||
+            signature[1] !== 0x4b
+          ) {
+            throw new Error("Firebase response is not a valid XLSX file.");
+          }
+
+          return data;
+        } finally {
+          clearTimeout(timer);
+        }
+      }
+
+      for (let attempt = 1; attempt <= 2; attempt += 1) {
+        for (const bucket of buckets) {
+          try {
+            const reference =
+              bucket === configured
+                ? firebase.storage().ref().child(WORKBOOK_PATH)
+                : firebase.storage().refFromURL(
+                    `gs://${bucket}/${WORKBOOK_PATH}`
+                  );
+
+            const url = await reference.getDownloadURL();
+            return await fetchUrl(url);
+          } catch (error) {
+            lastError = error;
+            console.warn(
+              `Workbook fetch attempt ${attempt} failed for ${bucket}`,
+              error
+            );
+          }
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 750));
+      }
+
+      throw new Error(
+        `Firebase Storage fetch failed: ${
+          lastError?.message || "Unknown error"
+        }`
+      );
+    }
+
+    function parseWorkbook(buffer) {
+      const workbook = XLSX.read(buffer, {
+        type:"array",
+        cellDates:true,
+        cellFormula:false,
+        dense:false
+      });
+
+      const planningSheet = getWorksheet(workbook, "MSA Planning");
+      const vendorSheet = getWorksheet(workbook, "Vendor Inputs");
+
+      if (!planningSheet) {
+        throw new Error('Required worksheet "MSA Planning" was not found.');
+      }
+
+      if (!vendorSheet) {
+        throw new Error('Required worksheet "Vendor Inputs" was not found.');
+      }
+
+      const planningRows = XLSX.utils.sheet_to_json(planningSheet, {
+        header:1,
+        defval:"",
+        raw:true,
+        blankrows:false
+      });
+
+      const vendorRows = XLSX.utils.sheet_to_json(vendorSheet, {
+        header:1,
+        defval:"",
+        raw:true,
+        blankrows:false
+      });
+
+      const vendorResult = parseVendorInputs(vendorRows);
+      const planningResult = parseMsaPlanning(
+        planningRows,
+        vendorResult.vendorsByMsa
+      );
+
+      const warnings = [
+        ...vendorResult.warnings,
+        ...planningResult.warnings
+      ];
+
+      return {
+        summary:planningResult.summary,
+        markets:planningResult.markets,
+        recruiting:planningResult.recruiting,
+        warnings
+      };
+    }
+
+    function getWorksheet(workbook, expectedName) {
+      const expected = normalizeKey(expectedName);
+      const actual = workbook.SheetNames.find(
+        name => normalizeKey(name) === expected
+      );
+      return actual ? workbook.Sheets[actual] : null;
+    }
+
+    function findHeader(rows, requiredHeaders) {
+      const required = requiredHeaders.map(normalizeKey);
+
+      for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+        const row = rows[rowIndex] || [];
+        const indexByHeader = new Map();
+
+        row.forEach((value, columnIndex) => {
+          const normalized = normalizeKey(value);
+          if (normalized && !indexByHeader.has(normalized)) {
+            indexByHeader.set(normalized, columnIndex);
+          }
+        });
+
+        if (required.every(header => indexByHeader.has(header))) {
+          return { rowIndex, indexByHeader };
+        }
+      }
+
+      throw new Error(
+        `Required headers were not found: ${requiredHeaders.join(", ")}.`
+      );
+    }
+
+    function parseVendorInputs(rows) {
+      const warnings = [];
+      const header = findHeader(
+        rows,
+        ["MSA", "Service", "Current Vendors"]
+      );
+
+      const vendorsByMsa = new Map();
+
+      for (let index = header.rowIndex + 1; index < rows.length; index += 1) {
+        const row = rows[index] || [];
+        const msa = cleanText(
+          row[header.indexByHeader.get("MSA")]
+        );
+        const serviceRaw = cleanText(
+          row[header.indexByHeader.get("SERVICE")]
+        );
+        const vendor = cleanText(
+          row[header.indexByHeader.get("CURRENTVENDORS")]
+        );
+
+        if (!msa || !serviceRaw || !vendor) continue;
+
+        const service = normalizeService(serviceRaw);
+        if (!service) {
+          warnings.push(
+            `Vendor Inputs row ${index + 1} has an unsupported service: ${serviceRaw}.`
+          );
+          continue;
+        }
+
+        const msaKey = normalizeText(msa);
+        if (!vendorsByMsa.has(msaKey)) {
+          vendorsByMsa.set(msaKey, {
+            ERS:new Map(),
+            PM:new Map(),
+            Vended:new Map()
+          });
+        }
+
+        const vendorMap = vendorsByMsa.get(msaKey)[service];
+        const vendorKey = normalizeText(vendor);
+
+        if (!vendorMap.has(vendorKey)) {
+          vendorMap.set(vendorKey, vendor);
+        }
+      }
+
+      const finalized = new Map();
+
+      vendorsByMsa.forEach((services, msaKey) => {
+        finalized.set(msaKey, {
+          ERS:[...services.ERS.values()].sort(alphaSort),
+          PM:[...services.PM.values()].sort(alphaSort),
+          Vended:[...services.Vended.values()].sort(alphaSort)
+        });
+      });
+
+      return { vendorsByMsa:finalized, warnings };
+    }
+
+    function parseMsaPlanning(rows, vendorsByMsa) {
+      const warnings = [];
+      const header = findHeader(rows, [
+        "Location",
+        "MSA",
+        "Total Active Assets",
+        "ERS Current Vendors",
+        "ERS Vendors Needed",
+        "ERS Gap",
+        "PM Current Vendors",
+        "PM Vendors Needed",
+        "PM Gap",
+        "Vended Current Vendors",
+        "Vended Vendors Needed",
+        "Vended Gap",
+        "Total Gap",
+        "Priority",
+        "Recommendation",
+        "Coverage Score"
+      ]);
+
+      const column = key =>
+        header.indexByHeader.get(normalizeKey(key));
+
+      const markets = [];
+
+      for (let index = header.rowIndex + 1; index < rows.length; index += 1) {
+        const row = rows[index] || [];
+        const location = cleanText(row[column("Location")]);
+        const msa = cleanText(row[column("MSA")]);
+
+        if (!location && !msa) continue;
+        if (!location) {
+          warnings.push(
+            `MSA Planning row ${index + 1} was skipped because Location is blank.`
+          );
+          continue;
+        }
+
+        const vendorLists =
+          vendorsByMsa.get(normalizeText(msa)) || {
+            ERS:[],
+            PM:[],
+            Vended:[]
+          };
+
+        const assets = toNumber(row[column("Total Active Assets")]);
+        const ersCurrent = toNumber(row[column("ERS Current Vendors")]);
+        const ersNeeded = toNumber(row[column("ERS Vendors Needed")]);
+        const ersGap = toNumber(row[column("ERS Gap")]);
+        const pmCurrent = toNumber(row[column("PM Current Vendors")]);
+        const pmNeeded = toNumber(row[column("PM Vendors Needed")]);
+        const pmGap = toNumber(row[column("PM Gap")]);
+        const vendedCurrent = toNumber(
+          row[column("Vended Current Vendors")]
+        );
+        const vendedNeeded = toNumber(
+          row[column("Vended Vendors Needed")]
+        );
+        const vendedGap = toNumber(row[column("Vended Gap")]);
+        const totalGap = toNumber(row[column("Total Gap")]);
+        const coverageScore = toNumber(row[column("Coverage Score")]);
+        const priority =
+          cleanText(row[column("Priority")]) ||
+          derivePriority(coverageScore);
+
+        const market = {
+          location,
+          msa:location,
+          marketMsa:msa,
+          assets,
+          ersCurrent,
+          ersNeeded,
+          ersGap,
+          pmCurrent,
+          pmNeeded,
+          pmGap,
+          vendedCurrent,
+          vendedNeeded,
+          vendedGap,
+          totalGap,
+          coverageScore,
+          priority,
+          recommendation:
+            cleanText(row[column("Recommendation")]) ||
+            buildRecommendation({ ersGap, pmGap, vendedGap }),
+          ersVendors:vendorLists.ERS,
+          pmVendors:vendorLists.PM,
+          vendedVendors:vendorLists.Vended
+        };
+
+        const mismatches = [
+          ["ERS", ersCurrent, vendorLists.ERS.length],
+          ["PM", pmCurrent, vendorLists.PM.length],
+          ["Vended", vendedCurrent, vendorLists.Vended.length]
+        ].filter(([, expected, actual]) => expected !== actual);
+
+        if (mismatches.length) {
+          warnings.push(
+            `${location}: ${mismatches.map(
+              ([service, expected, actual]) =>
+                `${service} count ${expected} vs ${actual} listed vendors`
+            ).join("; ")}.`
+          );
+        }
+
+        markets.push(market);
+      }
+
+      if (!markets.length) {
+        throw new Error("MSA Planning did not contain any location rows.");
+      }
+
+      const recruiting = [];
+      markets.forEach(market => {
+        [
+          ["ERS", market.ersGap],
+          ["PM", market.pmGap],
+          ["Vended", market.vendedGap]
+        ].forEach(([service, gap]) => {
+          if (gap > 0) {
+            recruiting.push({
+              location:market.location,
+              msa:market.location,
+              marketMsa:market.marketMsa,
+              service,
+              gap,
+              status:"Open",
+              priority:market.priority
+            });
+          }
+        });
+      });
+
+      const activeAssets = markets.reduce(
+        (sum, market) => sum + market.assets,
+        0
+      );
+
+      const recruitingActions = markets.reduce(
+        (sum, market) => sum + market.totalGap,
+        0
+      );
+
+      const totalNeeded = markets.reduce(
+        (sum, market) =>
+          sum +
+          market.ersNeeded +
+          market.pmNeeded +
+          market.vendedNeeded,
+        0
+      );
+
+      const coverageScore = totalNeeded
+        ? Math.max(0, 100 * (1 - recruitingActions / totalNeeded))
+        : 100;
+
+      return {
+        markets,
+        recruiting,
+        warnings,
+        summary:{
+          activeAssets,
+          markets:markets.length,
+          coverageScore,
+          recruitingActions
+        }
+      };
+    }
+
+    function renderApplication() {
+      renderKpis();
+      renderGapChart();
+      renderPrioritySummary();
+      renderDashboardTable();
+      renderShops();
+      renderRecruiting();
+    }
+
+    function renderKpis() {
+      if (!state.data) return;
+
+      const summary = state.data.summary;
+      const kpis = [
+        [
+          "Fleet Assets",
+          formatNumber(summary.activeAssets),
+          "Active assets included in MSA Planning"
+        ],
+        [
+          "Shop Locations",
+          formatNumber(summary.markets),
+          "Locations evaluated in the workbook"
+        ],
+        [
+          "Coverage Score",
+          formatPercent(summary.coverageScore),
+          "Filled vendor requirements across all services"
+        ],
+        [
+          "Recruiting Needs",
+          formatNumber(summary.recruitingActions),
+          "Total open vendor positions"
+        ]
+      ];
+
+      $("#kpi-grid").innerHTML = kpis.map(
+        ([label, value, helper]) => `
+          <article class="kpi-card">
+            <div class="kpi-label">${escapeHtml(label)}</div>
+            <div class="kpi-value">${escapeHtml(value)}</div>
+            <div class="kpi-helper">${escapeHtml(helper)}</div>
+          </article>
+        `
+      ).join("");
+    }
+
+    function renderGapChart() {
+      if (!state.data) return;
+
+      const markets = getSortedMarkets().slice(0, 8);
+      const maximumGap = Math.max(
+        ...markets.map(market => market.totalGap),
+        1
+      );
+
+      $("#gap-chart").innerHTML = markets.length
+        ? markets.map(market => `
+            <div class="gap-row">
+              <div
+                class="gap-label"
+                title="${escapeAttribute(market.location)}"
+              >${escapeHtml(market.location)}</div>
+              <div class="gap-track">
+                <div
+                  class="gap-bar"
+                  style="width:${market.totalGap / maximumGap * 100}%"
+                ></div>
+              </div>
+              <div class="gap-value">${formatNumber(market.totalGap)}</div>
+            </div>
+          `).join("")
+        : '<div class="empty-state">No recruiting gaps were found.</div>';
+    }
+
+    function renderPrioritySummary() {
+      if (!state.data) return;
+
+      const counts = {
+        Critical:0,
+        High:0,
+        Monitor:0,
+        Healthy:0
+      };
+
+      state.data.markets.forEach(market => {
+        counts[market.priority] = (counts[market.priority] || 0) + 1;
+      });
+
+      const priorities = [
+        ["Critical", "var(--red)"],
+        ["High", "var(--orange)"],
+        ["Monitor", "var(--amber)"],
+        ["Healthy", "var(--green)"]
+      ];
+
+      $("#priority-summary").innerHTML = priorities.map(
+        ([priority, color]) => `
+          <div class="priority-item">
+            <div class="priority-label">
+              <span class="priority-dot" style="background:${color}"></span>
+              ${escapeHtml(priority)}
+            </div>
+            <div class="priority-count">
+              ${formatNumber(counts[priority] || 0)}
+            </div>
+          </div>
+        `
+      ).join("");
+    }
+
+    function renderDashboardTable() {
+      if (!state.data) return;
+
+      const markets = getSortedMarkets().slice(0, 10);
+      const body = $("#dashboard-table-body");
+
+      body.innerHTML = markets.length
+        ? markets.map((market, index) =>
+            renderShopRows(market, `dashboard-${index}`)
+          ).join("")
+        : '<tr><td colspan="9" class="empty-state">No locations were found.</td></tr>';
+    }
+
+    function renderShops() {
+      if (!state.data) return;
+
+      const search = $("#shop-search").value.trim().toLowerCase();
+      const priority = $("#shop-priority-filter").value;
+      const service = $("#shop-service-filter").value;
+
+      const markets = getSortedMarkets().filter(market => {
+        const vendors = [
+          ...market.ersVendors,
+          ...market.pmVendors,
+          ...market.vendedVendors
+        ];
+
+        const haystack = [
+          market.location,
+          market.marketMsa,
+          ...vendors
+        ].join(" ").toLowerCase();
+
+        const matchesSearch =
+          !search || haystack.includes(search);
+
+        const matchesPriority =
+          !priority || market.priority === priority;
+
+        const matchesService =
+          !service ||
+          (
+            service === "ERS"
+              ? market.ersCurrent > 0
+              : service === "PM"
+                ? market.pmCurrent > 0
+                : market.vendedCurrent > 0
+          );
+
+        return matchesSearch && matchesPriority && matchesService;
+      });
+
+      const body = $("#shops-table-body");
+
+      body.innerHTML = markets.length
+        ? markets.map((market, index) =>
+            renderShopRows(market, `shops-${index}`)
+          ).join("")
+        : '<tr><td colspan="9" class="empty-state">No shop locations match the selected filters.</td></tr>';
+    }
+
+    function renderShopRows(market, rowId) {
+      const expanded = state.expanded.has(rowId);
+
+      return `
+        <tr class="data-row">
+          <td>
+            <button
+              class="shop-toggle"
+              data-row-id="${escapeAttribute(rowId)}"
+              type="button"
+              title="${escapeAttribute(market.location)}"
+            >
+              <span class="chevron">${expanded ? "▼" : "▶"}</span>
+              ${escapeHtml(market.location)}
+            </button>
+          </td>
+          <td title="${escapeAttribute(market.marketMsa)}">
+            ${escapeHtml(market.marketMsa)}
+          </td>
+          <td class="num">${formatNumber(market.assets)}</td>
+          <td class="num">${vendorCountBadge(market.ersCurrent)}</td>
+          <td class="num">${vendorCountBadge(market.pmCurrent)}</td>
+          <td class="num">${vendorCountBadge(market.vendedCurrent)}</td>
+          <td class="num">${formatNumber(market.totalGap)}</td>
+          <td class="num">${formatPercent(market.coverageScore)}</td>
+          <td>${priorityBadge(market.priority)}</td>
+        </tr>
+        <tr
+          class="detail-row"
+          data-detail-for="${escapeAttribute(rowId)}"
+          style="display:${expanded ? "table-row" : "none"}"
+        >
+          <td colspan="9">
+            <div class="shop-detail">
+              <div class="shop-detail-header">
+                <span>
+                  <strong>MSA:</strong>
+                  ${escapeHtml(market.marketMsa)}
+                </span>
+                <span>
+                  <strong>Recommendation:</strong>
+                  ${escapeHtml(
+                    (market.recommendation || "No action required")
+                      .replace(/\r?\n/g, " · ")
+                  )}
+                </span>
+              </div>
+              <div class="vendor-sections">
+                ${vendorSectionHtml(
+                  "ERS Vendors",
+                  market.ersVendors,
+                  market.ersCurrent
+                )}
+                ${vendorSectionHtml(
+                  "PM Vendors",
+                  market.pmVendors,
+                  market.pmCurrent
+                )}
+                ${vendorSectionHtml(
+                  "Vended Vendors",
+                  market.vendedVendors,
+                  market.vendedCurrent
+                )}
+              </div>
+            </div>
+          </td>
+        </tr>
+      `;
+    }
+
+    function handleShopToggle(event) {
+      const button = event.target.closest(".shop-toggle");
+      if (!button) return;
+
+      const rowId = button.dataset.rowId;
+
+      if (state.expanded.has(rowId)) {
+        state.expanded.delete(rowId);
+      } else {
+        state.expanded.add(rowId);
+      }
+
+      renderDashboardTable();
+      renderShops();
+    }
+
+    function vendorSectionHtml(title, vendors, expectedCount) {
+      const list = vendors.length
+        ? `
+          <div class="vendor-grid">
+            ${vendors.map(
+              vendor =>
+                `<div class="vendor-chip">${escapeHtml(vendor)}</div>`
+            ).join("")}
+          </div>
+        `
+        : '<div class="empty-vendors">No vendors currently available.</div>';
+
+      return `
+        <details
+          class="vendor-section"
+          ${vendors.length <= 6 ? "open" : ""}
+        >
+          <summary>
+            ${escapeHtml(title)} (${formatNumber(expectedCount)})
+          </summary>
+          ${list}
+        </details>
+      `;
+    }
+
+    function renderRecruiting() {
+      if (!state.data) return;
+
+      const search = $("#recruiting-search").value.trim().toLowerCase();
+      const service = $("#service-filter").value;
+      const status = $("#status-filter").value;
+
+      const actions = state.data.recruiting
+        .filter(action => {
+          const haystack = [
+            action.location,
+            action.marketMsa
+          ].join(" ").toLowerCase();
+
+          return (
+            (!search || haystack.includes(search)) &&
+            (!service || action.service === service) &&
+            (!status || action.status === status)
+          );
+        })
+        .sort((a, b) =>
+          b.gap - a.gap ||
+          priorityRank(a.priority) - priorityRank(b.priority) ||
+          alphaSort(a.location, b.location)
+        );
+
+      const body = $("#recruiting-table-body");
+
+      body.innerHTML = actions.length
+        ? actions.map(action => `
+            <tr class="data-row">
+              <td>${priorityBadge(action.priority)}</td>
+              <td title="${escapeAttribute(action.location)}">
+                ${escapeHtml(action.location)}
+              </td>
+              <td title="${escapeAttribute(action.marketMsa)}">
+                ${escapeHtml(action.marketMsa)}
+              </td>
+              <td>
+                <span class="service-badge">
+                  ${escapeHtml(action.service)}
+                </span>
+              </td>
+              <td class="num">${formatNumber(action.gap)}</td>
+              <td>
+                <span class="status-badge">
+                  ${escapeHtml(action.status)}
+                </span>
+              </td>
+            </tr>
+          `).join("")
+        : '<tr><td colspan="6" class="empty-state">No recruiting needs match the selected filters.</td></tr>';
+    }
+
+    function switchView(viewName) {
+      if (!pageContent[viewName]) return;
+
+      state.activeView = viewName;
+
+      document.querySelectorAll(".page-view").forEach(view => {
+        view.classList.toggle(
+          "active",
+          view.id === `${viewName}-view`
+        );
+      });
+
+      document.querySelectorAll(".view-tab").forEach(button => {
+        button.classList.toggle(
+          "active",
+          button.dataset.view === viewName
+        );
+      });
+
+      $("#page-title").textContent = pageContent[viewName].title;
+      $("#page-description").textContent =
+        pageContent[viewName].description;
+      $("#workspace").scrollTop = 0;
+    }
+
+    function getSortedMarkets() {
+      if (!state.data) return [];
+
+      return [...state.data.markets].sort((a, b) =>
+        b.totalGap - a.totalGap ||
+        priorityRank(a.priority) - priorityRank(b.priority) ||
+        b.assets - a.assets ||
+        alphaSort(a.location, b.location)
+      );
+    }
+
+    function priorityRank(priority) {
+      return {
+        Critical:0,
+        High:1,
+        Monitor:2,
+        Healthy:3
+      }[priority] ?? 4;
+    }
+
+    function vendorCountBadge(count) {
+      return `
+        <span class="vendor-count ${count === 0 ? "zero" : ""}">
+          ${formatNumber(count)}
+        </span>
+      `;
+    }
+
+    function priorityBadge(priority) {
+      const normalized = ["critical", "high", "monitor", "healthy"]
+        .includes(String(priority).toLowerCase())
+          ? String(priority).toLowerCase()
+          : "monitor";
+
+      return `
+        <span class="priority-badge priority-${normalized}">
+          ${escapeHtml(priority || "Monitor")}
+        </span>
+      `;
+    }
+
+    function exportCurrentView() {
+      if (!state.data) return;
+
+      let records = [];
+      let filename = "";
+
+      if (state.activeView === "recruiting") {
+        records = state.data.recruiting.map(action => ({
+          Priority:action.priority,
+          "Shop Location":action.location,
+          MSA:action.marketMsa,
+          Service:action.service,
+          Gap:action.gap,
+          Status:action.status
+        }));
+        filename = "vendor-recruiting.csv";
+      } else {
+        records = state.data.markets.map(market => ({
+          "Shop Location":market.location,
+          MSA:market.marketMsa,
+          Assets:market.assets,
+          "ERS Current Vendors":market.ersCurrent,
+          "ERS Vendors Needed":market.ersNeeded,
+          "ERS Gap":market.ersGap,
+          "ERS Vendor List":market.ersVendors,
+          "PM Current Vendors":market.pmCurrent,
+          "PM Vendors Needed":market.pmNeeded,
+          "PM Gap":market.pmGap,
+          "PM Vendor List":market.pmVendors,
+          "Vended Current Vendors":market.vendedCurrent,
+          "Vended Vendors Needed":market.vendedNeeded,
+          "Vended Gap":market.vendedGap,
+          "Vended Vendor List":market.vendedVendors,
+          "Total Gap":market.totalGap,
+          "Coverage Score":market.coverageScore,
+          Priority:market.priority,
+          Recommendation:market.recommendation
+        }));
+        filename = "vendor-shop-coverage.csv";
+      }
+
+      downloadCsv(records, filename);
+    }
+
+    function downloadCsv(records, filename) {
+      if (!records.length) return;
+
+      const headers = Object.keys(records[0]);
+      const rows = [
+        headers.map(csvEscape).join(","),
+        ...records.map(record =>
+          headers.map(header => csvEscape(record[header])).join(",")
+        )
+      ];
+
+      const blob = new Blob(
+        ["\ufeff", rows.join("\r\n")],
+        { type:"text/csv;charset=utf-8" }
+      );
+
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      setTimeout(() => URL.revokeObjectURL(link.href), 0);
+    }
+
+    function csvEscape(value) {
+      const text = Array.isArray(value)
+        ? value.join(" | ")
+        : String(value ?? "");
+
+      return /[",\r\n]/.test(text)
+        ? `"${text.replace(/"/g, '""')}"`
+        : text;
+    }
+
+    function setStatus(type, title, detail) {
+      const dot = $("#status-dot");
+      dot.className = `status-dot ${type}`;
+      $("#status-title").textContent = title;
+      $("#status-detail").textContent = detail;
+    }
+
+    function showWarning(message) {
+      const warning = $("#source-warning");
+      warning.textContent = message;
+      warning.style.display = "block";
+    }
+
+    function hideWarning() {
+      const warning = $("#source-warning");
+      warning.textContent = "";
+      warning.style.display = "none";
+    }
+
+    function renderSourceWarnings(warnings) {
+      if (!warnings.length) {
+        hideWarning();
+        return;
+      }
+
+      const preview = warnings.slice(0, 4).join(" ");
+      const suffix =
+        warnings.length > 4
+          ? ` ${warnings.length - 4} additional warning(s) were logged to the browser console.`
+          : "";
+
+      showWarning(preview + suffix);
+      warnings.forEach(warning => console.warn(warning));
+    }
+
+    function normalizeKey(value) {
+      return String(value ?? "")
+        .trim()
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, "");
+    }
+
+    function normalizeText(value) {
+      return cleanText(value)
+        .toUpperCase()
+        .replace(/\s+/g, " ");
+    }
+
+    function cleanText(value) {
+      return String(value ?? "")
+        .replace(/\u00a0/g, " ")
+        .trim();
+    }
+
+    function normalizeService(value) {
+      const normalized = normalizeText(value);
+
+      if (normalized === "ERS" || normalized === "ERSA") {
+        return "ERS";
+      }
+
+      if (
+        normalized === "PM" ||
+        normalized === "PREVENTIVE MAINTENANCE"
+      ) {
+        return "PM";
+      }
+
+      if (
+        normalized === "VENDED" ||
+        normalized === "VENDED REPAIR" ||
+        normalized === "REPAIR"
+      ) {
+        return "Vended";
+      }
+
+      return "";
+    }
+
+    function toNumber(value) {
+      if (typeof value === "number" && Number.isFinite(value)) {
+        return value;
+      }
+
+      const parsed = Number(
+        String(value ?? "")
+          .replace(/[$,%]/g, "")
+          .replace(/,/g, "")
+          .trim()
+      );
+
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    function derivePriority(coverageScore) {
+      if (coverageScore < 30) return "Critical";
+      if (coverageScore < 40) return "High";
+      if (coverageScore < 90) return "Monitor";
+      return "Healthy";
+    }
+
+    function buildRecommendation({ ersGap, pmGap, vendedGap }) {
+      const recommendations = [];
+
+      if (ersGap > 0) recommendations.push(`Add ${ersGap} ERS`);
+      if (pmGap > 0) recommendations.push(`Add ${pmGap} PM`);
+      if (vendedGap > 0) {
+        recommendations.push(`Add ${vendedGap} Vended`);
+      }
+
+      return recommendations.length
+        ? recommendations.join("\n")
+        : "No action required";
+    }
+
+    function alphaSort(a, b) {
+      return String(a ?? "").localeCompare(
+        String(b ?? ""),
+        undefined,
+        { sensitivity:"base" }
+      );
+    }
+
+    function formatNumber(value) {
+      return new Intl.NumberFormat("en-US", {
+        maximumFractionDigits:0
+      }).format(Number(value || 0));
+    }
+
+    function formatPercent(value) {
+      return `${Number(value || 0).toFixed(1)}%`;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function escapeAttribute(value) {
+      return escapeHtml(value);
+    }
+
+    initialize();
+
+    setInterval(() => {
+      if (firebase.auth().currentUser) {
+        loadFromFirebase();
+      }
+    }, AUTO_REFRESH_MS);
+  </script>
+</body>
+</html>
