@@ -998,6 +998,32 @@
     }
 
     .vendor-section-row:hover td { background:var(--section)!important; }
+
+    .under90-selector-cell {
+      padding:4px 8px!important;
+      text-align:right!important;
+    }
+
+    .under90-branch-select {
+      width:100%;
+      max-width:390px;
+      height:30px;
+      padding:0 30px 0 10px;
+      border:1px solid #8fa0b2;
+      border-radius:4px;
+      background:#fff;
+      color:#172b43;
+      font-size:11px;
+      font-weight:800;
+      outline:none;
+      cursor:pointer;
+    }
+
+    .under90-branch-select:focus {
+      border-color:#0b4f79;
+      box-shadow:0 0 0 2px rgba(11,79,121,.12);
+    }
+
     .group-start td { border-top:2px solid #b9c4cf; }
 
     .cell-note {
@@ -1110,7 +1136,7 @@
     <a class="nav-item" href="index.html#config">Customer Configuration</a>
     <a class="nav-item active" href="opd.html">Vended Operational Performance</a>
     <a class="nav-item" href="vendor_cov.html">Vendor Coverage</a>
-    
+
     <div class="sidebar-truck">
       <svg width="150" height="76" viewBox="0 0 120 60" xmlns="http://www.w3.org/2000/svg">
         <line x1="0" y1="57" x2="120" y2="57" stroke="#4a4b50" stroke-width="2" stroke-dasharray="10 5"/>
@@ -1224,7 +1250,7 @@
             </section>
           </div>
 
-          <div class="opd-footer" id="methodology-footer"><strong>Workbook-derived:</strong> A single open order may count separately under PM, DOT, A/C, and LTS. ANNUAL INSPECTION routes to DOT and GARDA AC CHECK routes to A/C whenever those phrases appear anywhere inside the combined VRO task text, regardless of the order’s REPCLASS. PM remains driven by a PM REPCLASS and counts approved PM task names or other remaining PM-repclass task content after the separate DOT, A/C, LTS, and coolant phrases are removed. Repeated task phrases on one order are deduplicated by unique Order + program. All PM-related compliance calculations use Garda's formula: 1 - (distinct overdue VINs / total active VINs). # Overdue Not Scheduled is the hard count of unique overdue VINs that do not yet have every required PM or inspection fully scheduled. That includes VINs with no matching VRO, VROs still in Unassigned ROs, missing ECDs, or only part of the overdue work scheduled. Scheduling Gap is that same count divided by total active VINs. Coming-due VINs stay in the detailed scheduling report but do not reduce compliance or Scheduling Gap until they become overdue. Duplicate VIN interval rows use OR logic: if mileage or time/frequency reaches the threshold, the VIN is controlled by that requirement. OOS movement is calculated from the unique Unit # values marked OOS on the OOS GARDA tab for the approved 67 branches. The below-threshold section now includes only sites below 90% usefulness. Vehicles Returned to Service and New Units OOS are calculated separately for all sites and for the OOS units at those below-90% sites. Current Day compares today's OOS unit list to the prior snapshot; Prior Day compares the prior snapshot to the snapshot before it. Delta is Current Day minus Prior Day. Maintenance VRO matching is performed by normalized VIN across all orders. The PM, DOT, AC, and LTS source tabs establish the approved 67-site VIN population, so a VRO is not discarded when its customer branch code is different, malformed, or blank. PM is recognized from a PM REPCLASS or approved PM task text; ANNUAL INSPECTION, GARDA AC CHECK, and GARDA LTS SYSTEM CHECK are recognized anywhere in combined task text. Completed or Final Charges Submitted work counts only when its completion date is later than the requirement's LASTDONE date on the source tab. The report export includes separate PM Not Scheduled, DOT Not Scheduled, LTS PM Not Scheduled, and AC Not Scheduled tabs.</div>
+          <div class="opd-footer" id="methodology-footer"><strong>Workbook-derived:</strong> A single open order may count separately under PM, DOT, A/C, and LTS. ANNUAL INSPECTION routes to DOT and GARDA AC CHECK routes to A/C whenever those phrases appear anywhere inside the combined VRO task text, regardless of the order’s REPCLASS. PM remains driven by a PM REPCLASS and counts approved PM task names or other remaining PM-repclass task content after the separate DOT, A/C, LTS, and coolant phrases are removed. Repeated task phrases on one order are deduplicated by unique Order + program. All PM-related compliance calculations use Garda's formula: 1 - (distinct overdue VINs / total active VINs). # Overdue Not Scheduled is the hard count of unique overdue VINs that do not yet have every required PM or inspection fully scheduled. That includes VINs with no matching VRO, VROs still in Unassigned ROs, missing ECDs, or only part of the overdue work scheduled. Scheduling Gap is that same count divided by total active VINs. Coming-due VINs stay in the detailed scheduling report but do not reduce compliance or Scheduling Gap until they become overdue. Duplicate VIN interval rows use OR logic: if mileage or time/frequency reaches the threshold, the VIN is controlled by that requirement. OOS movement is calculated from the unique Unit # values marked OOS on the OOS GARDA tab for the approved 67 branches. The below-threshold section now includes only sites below 90% usefulness. Vehicles Returned to Service and New Units OOS are calculated separately for all sites and for the OOS units at those below-90% sites. The Sites <90% section includes a branch selector that displays the same Prior Day, Current Day, Delta, movement, and usefulness metrics for an individual current below-90% branch. Current Day compares today's OOS unit list to the prior snapshot; Prior Day compares the prior snapshot to the snapshot before it. Delta is Current Day minus Prior Day. Maintenance VRO matching is performed by normalized VIN across all orders. The PM, DOT, AC, and LTS source tabs establish the approved 67-site VIN population, so a VRO is not discarded when its customer branch code is different, malformed, or blank. PM is recognized from a PM REPCLASS or approved PM task text; ANNUAL INSPECTION, GARDA AC CHECK, and GARDA LTS SYSTEM CHECK are recognized anywhere in combined task text. Completed or Final Charges Submitted work counts only when its completion date is later than the requirement's LASTDONE date on the source tab. The report export includes separate PM Not Scheduled, DOT Not Scheduled, LTS PM Not Scheduled, and AC Not Scheduled tabs.</div>
         </div>
       </div>
     </section>
@@ -1373,6 +1399,7 @@ const FERGUSON_PROGRAMS=[
 let PROGRAMS=[];
 let activeCustomerKey="";
 let activeCustomerProfile=null;
+let selectedUnder90BranchCode="";
 
 const CUSTOMER_PROFILES={
   garda:{
@@ -2943,6 +2970,20 @@ function summarizeUseful(map){
 
   all.underBranchCodes.sort();
 
+  all.branchMetrics=Object.fromEntries(
+    rows.map(row=>[
+      row.code,
+      {
+        code:row.code,
+        name:row.name,
+        maxRoutes:row.maxRoutes,
+        totalUnits:row.totalUnits,
+        oosUnits:row.oosUnits,
+        useful:row.useful
+      }
+    ])
+  );
+
   return all;
 }
 function vendorSummary(orders){
@@ -3390,6 +3431,90 @@ function mergeGardaComputedAndSupplemental(computed,supplemental,prior,priorPrio
         .newUnitsOos
     );
 
+  const currentOosByBranch=
+    vendedRepairCurrent
+      .oosUnitIdsByBranch||
+    null;
+
+  const priorOosByBranch=safePath(
+    prior,
+    "vendedRepair.oosUnitIdsByBranch",
+    null
+  );
+
+  const priorPriorOosByBranch=safePath(
+    priorPrior,
+    "vendedRepair.oosUnitIdsByBranch",
+    null
+  );
+
+  const currentReturnedByBranch={};
+  const currentNewByBranch={};
+  const priorReturnedByBranch={};
+  const priorNewByBranch={};
+
+  Object.keys(
+    vendedRepairCurrent.branchMetrics||{}
+  ).forEach(code=>{
+    const currentBranchMovement=
+      movementCounts(
+        currentOosByBranch?.[code],
+        priorOosByBranch?.[code]
+      );
+
+    const priorBranchMovement=
+      movementCounts(
+        priorOosByBranch?.[code],
+        priorPriorOosByBranch?.[code]
+      );
+
+    currentReturnedByBranch[code]=
+      currentBranchMovement
+        .returnedToService;
+
+    currentNewByBranch[code]=
+      currentBranchMovement
+        .newUnitsOos;
+
+    priorReturnedByBranch[code]=
+      firstMetric(
+        safePath(
+          prior,
+          `vendedRepair.branchReturnedToService.${code}`,
+          null
+        ),
+        priorBranchMovement
+          .returnedToService
+      );
+
+    priorNewByBranch[code]=
+      firstMetric(
+        safePath(
+          prior,
+          `vendedRepair.branchNewUnitsOos.${code}`,
+          null
+        ),
+        priorBranchMovement
+          .newUnitsOos
+      );
+  });
+
+  vendedRepairCurrent
+    .branchReturnedToService=
+      currentReturnedByBranch;
+
+  vendedRepairCurrent
+    .branchNewUnitsOos=
+      currentNewByBranch;
+
+  vendedRepairPrior
+    .branchReturnedToService=
+      priorReturnedByBranch;
+
+  vendedRepairPrior
+    .branchNewUnitsOos=
+      priorNewByBranch;
+
   const movementPriorOosIds=Array.isArray(priorOosIds)
     ?priorOosIds
     :[];
@@ -3668,6 +3793,19 @@ function parseWorkbook(buffer){
       .map(unit=>unit.unit)
       .sort();
 
+  usefulCurrent.oosUnitIdsByBranch=
+    Object.fromEntries(
+      [...APPROVED_CODES].map(code=>[
+        code,
+        oosMovementSource.units
+          .filter(unit=>
+            unit.branchCode===code
+          )
+          .map(unit=>unit.unit)
+          .sort()
+      ])
+    );
+
   const flash=parseGardaFlash(
     gardaFlash.aoa,
     warnings
@@ -3888,23 +4026,149 @@ async function loadFromFirebase(){
   }
 }
 
+function under90BranchOptionLabel(
+  metric
+){
+  const usefulText=
+    metric?.useful===null||
+    metric?.useful===undefined
+      ?"—"
+      :`${(Number(metric.useful)*100).toFixed(1)}%`;
+
+  return `${metric?.name||metric?.code||"Branch"} — ${usefulText}`;
+}
+function selectedUnder90View(
+  current,
+  prior
+){
+  const currentCodes=
+    current.underBranchCodes||[];
+
+  if(
+    selectedUnder90BranchCode&&
+    !currentCodes.includes(
+      selectedUnder90BranchCode
+    )
+  ){
+    selectedUnder90BranchCode="";
+  }
+
+  if(!selectedUnder90BranchCode){
+    return {
+      current,
+      prior,
+      selectedMetric:null
+    };
+  }
+
+  const code=selectedUnder90BranchCode;
+  const currentBranch=
+    current.branchMetrics?.[code]||
+    null;
+  const priorBranch=
+    prior.branchMetrics?.[code]||
+    null;
+
+  return {
+    selectedMetric:currentBranch,
+    current:{
+      underBranches:
+        currentBranch?1:0,
+      underUnits:
+        currentBranch?.totalUnits??null,
+      underOos:
+        currentBranch?.oosUnits??null,
+      underReturnedToService:
+        current.branchReturnedToService
+          ?.[code]??null,
+      underNewUnitsOos:
+        current.branchNewUnitsOos
+          ?.[code]??null,
+      underUseful:
+        currentBranch?.useful??null
+    },
+    prior:{
+      underBranches:
+        priorBranch?1:0,
+      underUnits:
+        priorBranch?.totalUnits??null,
+      underOos:
+        priorBranch?.oosUnits??null,
+      underReturnedToService:
+        prior.branchReturnedToService
+          ?.[code]??null,
+      underNewUnitsOos:
+        prior.branchNewUnitsOos
+          ?.[code]??null,
+      underUseful:
+        priorBranch?.useful??null
+    }
+  };
+}
 function renderVendedRepair(){
-  const current=dashboardData.vendedRepair.current;
-  const prior=dashboardData.vendedRepair.prior||{};
+  const current=
+    dashboardData.vendedRepair.current;
+  const prior=
+    dashboardData.vendedRepair.prior||{};
 
   const mainRows=[
-    ["# of Vended Sites","vendedSites","number","standard"],
-    ["# Units","units","number","standard"],
-    ["# OOS Units","oos","number","standard"],
-    ["# of Vehicles Returned to Service","returnedToService","number","movement"],
-    ["# of New Units OOS","newUnitsOos","number","movement"],
-    ["Usefulness %","useful","percent","standard"]
+    [
+      "# of Vended Sites",
+      "vendedSites",
+      "number",
+      "standard"
+    ],
+    [
+      "# Units",
+      "units",
+      "number",
+      "standard"
+    ],
+    [
+      "# OOS Units",
+      "oos",
+      "number",
+      "standard"
+    ],
+    [
+      "# of Vehicles Returned to Service",
+      "returnedToService",
+      "number",
+      "movement"
+    ],
+    [
+      "# of New Units OOS",
+      "newUnitsOos",
+      "number",
+      "movement"
+    ],
+    [
+      "Usefulness %",
+      "useful",
+      "percent",
+      "standard"
+    ]
   ];
 
   const underRows=[
-    ["# Branches","underBranches","number","standard"],
-    ["# Units","underUnits","number","standard"],
-    ["# OOS Units","underOos","number","standard"],
+    [
+      "# Branches",
+      "underBranches",
+      "number",
+      "standard"
+    ],
+    [
+      "# Units",
+      "underUnits",
+      "number",
+      "standard"
+    ],
+    [
+      "# OOS Units",
+      "underOos",
+      "number",
+      "standard"
+    ],
     [
       "# of Vehicles Returned to Service",
       "underReturnedToService",
@@ -3917,40 +4181,25 @@ function renderVendedRepair(){
       "number",
       "movement"
     ],
-    ["Usefulness %","underUseful","percent","standard"]
+    [
+      "Usefulness %",
+      "underUseful",
+      "percent",
+      "standard"
+    ]
   ];
 
-  let rows=mainRows.map(([label,key,type,mode])=>{
-    const labelClass=
-      mode==="movement"
-        ?"sub-label movement-child"
-        :"label";
-
-    return `<tr>
-      <td class="${labelClass}">${label}</td>
-      ${cell(prior[key],type)}
-      ${cell(current[key],type,true)}
-      ${deltaCell(
-        prior[key],
-        current[key],
-        type
-      )}
-    </tr>`;
-  }).join("");
-
-  rows+=`<tr class="vendor-section-row">
-    <td colspan="4">Sites &lt;90% Usefulness</td>
-  </tr>`;
-
-  rows+=underRows.map(
+  let rows=mainRows.map(
     ([label,key,type,mode])=>{
       const labelClass=
         mode==="movement"
           ?"sub-label movement-child"
-          :"sub-label";
+          :"label";
 
       return `<tr>
-        <td class="${labelClass}">${label}</td>
+        <td class="${labelClass}">
+          ${label}
+        </td>
         ${cell(prior[key],type)}
         ${cell(current[key],type,true)}
         ${deltaCell(
@@ -3962,7 +4211,104 @@ function renderVendedRepair(){
     }
   ).join("");
 
+  const options=(current.underBranchCodes||[])
+    .map(code=>
+      current.branchMetrics?.[code]
+    )
+    .filter(Boolean)
+    .sort((a,b)=>
+      String(a.name).localeCompare(
+        String(b.name)
+      )
+    );
+
+  const optionHtml=[
+    `<option value="">
+      All ${options.length} branches under 90%
+    </option>`,
+    ...options.map(metric=>
+      `<option
+        value="${escapeHtml(metric.code)}"
+        ${
+          selectedUnder90BranchCode===
+          metric.code
+            ?"selected"
+            :""
+        }
+      >
+        ${escapeHtml(
+          under90BranchOptionLabel(metric)
+        )}
+      </option>`
+    )
+  ].join("");
+
+  const view=selectedUnder90View(
+    current,
+    prior
+  );
+
+  rows+=`<tr class="vendor-section-row under90-section-row">
+    <td>Sites &lt;90% Usefulness</td>
+    <td
+      colspan="3"
+      class="under90-selector-cell"
+    >
+      <select
+        id="under90-branch-select"
+        class="under90-branch-select"
+        aria-label="View a branch under 90 percent usefulness"
+      >
+        ${optionHtml}
+      </select>
+    </td>
+  </tr>`;
+
+  rows+=underRows.map(
+    ([label,key,type,mode])=>{
+      const labelClass=
+        mode==="movement"
+          ?"sub-label movement-child"
+          :"sub-label";
+
+      return `<tr>
+        <td class="${labelClass}">
+          ${label}
+        </td>
+        ${cell(
+          view.prior[key],
+          type
+        )}
+        ${cell(
+          view.current[key],
+          type,
+          true
+        )}
+        ${deltaCell(
+          view.prior[key],
+          view.current[key],
+          type
+        )}
+      </tr>`;
+    }
+  ).join("");
+
   $("#vended-repair-body").innerHTML=rows;
+
+  const selector=
+    $("#under90-branch-select");
+
+  if(selector){
+    selector.addEventListener(
+      "change",
+      event=>{
+        selectedUnder90BranchCode=
+          event.target.value||"";
+
+        renderVendedRepair();
+      }
+    );
+  }
 }
 function renderVrEcd(){$("#vr-ecd-body").innerHTML=ECD_ROWS.map(r=>`<tr><td class="label">${r.label}</td>${cell(dashboardData.vrEcd[r.key],"number",true)}</tr>`).join("");}
 function overdueNotScheduledCell(projection){
@@ -5692,6 +6038,7 @@ function selectCustomer(customerKey){
 
   activeCustomerKey=customerKey||"";
   activeCustomerProfile=CUSTOMER_PROFILES[activeCustomerKey]||null;
+  selectedUnder90BranchCode="";
   PROGRAMS=activeCustomerProfile
     ?activeCustomerProfile.programs.map(program=>({...program}))
     :[];
@@ -6380,6 +6727,10 @@ function emptyCustomerVendedRepair(){
       underNewUnitsOos:null,
       underBranchCodes:[],
       underOosUnitIds:[],
+      branchMetrics:{},
+      oosUnitIdsByBranch:{},
+      branchReturnedToService:{},
+      branchNewUnitsOos:{},
       oosUnitIds:[]
     },
     prior:{}
