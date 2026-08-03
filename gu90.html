@@ -660,6 +660,29 @@
       background:var(--row-alt);
     }
 
+    thead th,
+    tbody td,
+    tbody td > *,
+    tbody td div,
+    tbody td span,
+    tbody td strong,
+    tbody td select {
+      text-align:left!important;
+      text-indent:0!important;
+    }
+
+    tbody td > *,
+    tbody td div,
+    tbody td span,
+    tbody td strong {
+      margin-left:0!important;
+      padding-left:0;
+    }
+
+    tbody td select {
+      text-align-last:left!important;
+    }
+
     tbody tr:hover td {
       background:#fff8d8;
     }
@@ -745,7 +768,7 @@
 
     .cell-lines {
       color:#253548;
-      white-space:pre-wrap;
+      white-space:pre-line;
       overflow-wrap:anywhere;
       text-align:left!important;
       line-height:1.45;
@@ -788,7 +811,7 @@
     .memo-text {
       color:#2a3440;
       text-align:left!important;
-      white-space:pre-wrap;
+      white-space:pre-line;
       overflow-wrap:anywhere;
     }
 
@@ -824,6 +847,7 @@
     .row-select {
       width:100%;
       text-align:left!important;
+      text-align-last:left!important;
       min-height:31px;
       padding:4px 25px 4px 7px;
       border:1px solid #aeb8c2;
@@ -842,6 +866,8 @@
 
     .temporary-status-select {
       width:100%;
+      text-align:left!important;
+      text-align-last:left!important;
       min-width:68px;
       min-height:31px;
       padding:4px 22px 4px 7px;
@@ -849,7 +875,6 @@
       border-radius:4px;
       background:var(--red-bg);
       color:var(--red);
-      text-align:left!important;
       font-size:9px;
       font-weight:900;
     }
@@ -1185,67 +1210,31 @@
           <div class="filter-toolbar">
             <div class="filter-title">Filters</div>
 
-            <details
-              class="multi-filter"
-              id="region-filter"
-            >
-              <summary id="region-filter-label">
-                All Regions
-              </summary>
-              <div
-                class="filter-popover"
-                id="region-filter-options"
-              ></div>
+            <details class="multi-filter" id="region-filter">
+              <summary id="region-filter-label">All Regions</summary>
+              <div class="filter-popover" id="region-filter-options"></div>
             </details>
 
-            <details
-              class="multi-filter"
-              id="subregion-filter"
-            >
-              <summary id="subregion-filter-label">
-                All Subregions
-              </summary>
-              <div
-                class="filter-popover"
-                id="subregion-filter-options"
-              ></div>
+            <details class="multi-filter" id="subregion-filter">
+              <summary id="subregion-filter-label">All Subregions</summary>
+              <div class="filter-popover" id="subregion-filter-options"></div>
             </details>
 
-            <details
-              class="multi-filter"
-              id="branch-filter"
-            >
-              <summary id="branch-filter-label">
-                All Branches
-              </summary>
-              <div
-                class="filter-popover"
-                id="branch-filter-options"
-              ></div>
+            <details class="multi-filter" id="branch-filter">
+              <summary id="branch-filter-label">All Branches</summary>
+              <div class="filter-popover" id="branch-filter-options"></div>
             </details>
 
-            <button
-              class="clear-filters"
-              id="clear-filters-btn"
-              type="button"
-            >
+            <button class="clear-filters" id="clear-filters-btn" type="button">
               Select All
             </button>
           </div>
 
           <div class="tab-bar">
-            <button
-              class="report-tab active"
-              type="button"
-              data-tab="active"
-            >
+            <button class="report-tab active" type="button" data-tab="active">
               Under 90% Useful Branches
             </button>
-            <button
-              class="report-tab"
-              type="button"
-              data-tab="archive"
-            >
+            <button class="report-tab" type="button" data-tab="archive">
               RTS &gt;90% Archive
             </button>
 
@@ -2920,9 +2909,7 @@ function htmlLines(value){
 }
 
 function assetCell(record){
-  return `<div class="unit-main">
-    ${escapeHtml(record.unit||"—")}
-  </div>`;
+  return `<div class="unit-main">${escapeHtml(record.unit||"—")}</div>`;
 }
 function memoIcon(){
   return `<svg
@@ -2944,24 +2931,11 @@ function memoCell(
   const display=saved||fallback;
   const empty=!display;
 
-  return `<div class="memo-cell">
-    <div class="memo-text ${empty?"empty":""}">
-      ${
-        empty
-          ?"Click the memo icon to add an update."
-          :htmlLines(display)
-      }
-    </div>
-    <button
-      class="memo-btn"
-      type="button"
-      data-memo-record="${escapeHtml(record.recordKey)}"
-      data-memo-field="${escapeHtml(field)}"
-      title="Edit ${escapeHtml(field)}"
-    >
-      ${memoIcon()}
-    </button>
-  </div>`;
+  const memoDisplay=empty
+    ?"Click the memo icon to add an update."
+    :htmlLines(display);
+
+  return `<div class="memo-cell"><div class="memo-text ${empty?"empty":""}">${memoDisplay}</div><button class="memo-btn" type="button" data-memo-record="${escapeHtml(record.recordKey)}" data-memo-field="${escapeHtml(field)}" title="Edit ${escapeHtml(field)}">${memoIcon()}</button></div>`;
 }
 
 function optionHtml(
@@ -3028,9 +3002,7 @@ function statusCell(record){
 function ecdCell(record){
   const date=parseDate(record?.ecd);
 
-  return `<span class="ecd-main">
-    ${date?escapeHtml(dateText(date)):"—"}
-  </span>`;
+  return `<span class="ecd-main">${date?escapeHtml(dateText(date)):"—"}</span>`;
 }
 function renderRows(){
   const rows=currentRows();
@@ -3082,11 +3054,7 @@ function renderRows(){
           "problem"
         )}
       </td>
-      <td>
-        <div class="cell-lines">
-          ${htmlLines(record.vendor||"—")}
-        </div>
-      </td>
+      <td><div class="cell-lines">${htmlLines(record.vendor||"—")}</div></td>
       <td>
         ${dropdownCell(
           record,
