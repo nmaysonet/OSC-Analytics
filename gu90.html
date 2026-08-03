@@ -1,0 +1,3727 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
+  <title>Garda Below 90% Reporting | OSC+ Analytics</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Raleway:wght@300;400;500;600;700;800;900&display=swap"
+    rel="stylesheet"
+  >
+
+  <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-storage.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+  <style>
+    :root {
+      --sidebar:#3a3b40;
+      --sidebar-hover:#4a4b50;
+      --gold:#ffc600;
+      --gold-hover:#e5b200;
+      --page:#f4f6f9;
+      --panel:#ffffff;
+      --border:#d8dde3;
+      --border-dark:#aeb8c2;
+      --text:#2f3338;
+      --muted:#6b7280;
+      --navy:#0b1f3a;
+      --navy-2:#17365d;
+      --blue:#1f4e78;
+      --section:#e8edf2;
+      --row-alt:#eef0f2;
+      --green:#16794a;
+      --green-bg:#eaf6f0;
+      --red:#b42318;
+      --red-bg:#fff1f0;
+      --amber:#9a6700;
+      --amber-bg:#fff7db;
+    }
+
+    * {
+      box-sizing:border-box;
+    }
+
+    html,
+    body {
+      height:100%;
+      margin:0;
+    }
+
+    body {
+      display:flex;
+      overflow:hidden;
+      background:var(--page);
+      color:var(--text);
+      font-family:"Raleway","Segoe UI",Arial,sans-serif;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font:inherit;
+    }
+
+    button {
+      cursor:pointer;
+    }
+
+    .hidden {
+      display:none!important;
+    }
+
+    #login-overlay {
+      position:fixed;
+      inset:0;
+      z-index:10000;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:var(--sidebar);
+    }
+
+    .login-box {
+      width:350px;
+      padding:38px;
+      background:#fff;
+      border-radius:8px;
+      box-shadow:0 14px 35px rgba(0,0,0,.35);
+      text-align:center;
+    }
+
+    .login-box h2 {
+      margin:15px 0 20px;
+      font-size:24px;
+      font-weight:900;
+    }
+
+    .login-box input {
+      width:100%;
+      height:44px;
+      padding:0 12px;
+      margin-bottom:12px;
+      border:1px solid #cbd2da;
+      border-radius:5px;
+      font-size:15px;
+    }
+
+    .login-box button {
+      width:100%;
+      height:42px;
+      border:none;
+      border-radius:5px;
+      background:var(--gold);
+      color:#252525;
+      font-size:13px;
+      font-weight:900;
+    }
+
+    .login-error {
+      display:none;
+      margin-bottom:10px;
+      color:var(--red);
+      font-size:12px;
+      font-weight:800;
+    }
+
+    .wheel {
+      width:44px;
+      height:44px;
+      border:7px solid var(--gold);
+      border-radius:50%;
+      position:relative;
+      display:inline-block;
+    }
+
+    .wheel::before,
+    .wheel::after {
+      content:"";
+      position:absolute;
+      left:50%;
+      top:50%;
+      background:var(--gold);
+      transform:translate(-50%,-50%);
+    }
+
+    .wheel::before {
+      width:31px;
+      height:6px;
+    }
+
+    .wheel::after {
+      width:6px;
+      height:31px;
+    }
+
+    .sidebar {
+      width:280px;
+      flex:0 0 280px;
+      display:flex;
+      flex-direction:column;
+      background:var(--sidebar);
+      color:#fff;
+      box-shadow:2px 0 8px rgba(0,0,0,.12);
+    }
+
+    .brand {
+      min-height:100px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap:12px;
+      border-bottom:1px solid #292a2e;
+    }
+
+    .brand-copy {
+      display:flex;
+      flex-direction:column;
+      align-items:flex-start;
+      justify-content:center;
+      line-height:1;
+    }
+
+    .brand-name {
+      font-size:38px;
+      font-weight:900;
+      letter-spacing:1.2px;
+    }
+
+    .brand-plus {
+      color:var(--gold);
+    }
+
+    .brand-subtitle {
+      margin-top:7px;
+      color:var(--gold);
+      font-size:12px;
+      font-weight:900;
+      letter-spacing:2.2px;
+      text-transform:uppercase;
+    }
+
+    .sidebar a.nav-item {
+      display:block;
+      text-decoration:none;
+    }
+
+    .nav-item {
+      padding:16px 20px;
+      border-bottom:1px solid #4b4c51;
+      border-left:4px solid transparent;
+      color:#fff;
+      font-size:14px;
+      font-weight:800;
+      transition:.15s;
+    }
+
+    .nav-item:hover {
+      background:var(--sidebar-hover);
+      color:var(--gold);
+    }
+
+    .nav-item.active {
+      border-left-color:var(--gold);
+      background:var(--sidebar-hover);
+      color:var(--gold);
+    }
+
+    .sidebar-truck {
+      margin-top:auto;
+      padding:24px 20px 22px;
+      border-top:1px solid #4b4c51;
+      background:#2a2b30;
+      text-align:center;
+    }
+
+    .app {
+      min-width:0;
+      flex:1;
+      display:flex;
+      flex-direction:column;
+      overflow:hidden;
+    }
+
+    .topbar {
+      min-height:86px;
+      flex:0 0 86px;
+      padding:16px 26px;
+      background:#fff;
+      border-bottom:1px solid var(--border);
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:22px;
+      box-shadow:0 2px 5px rgba(0,0,0,.04);
+    }
+
+    .title h1 {
+      margin:0;
+      color:#203040;
+      font-size:25px;
+      font-weight:900;
+    }
+
+    .title p {
+      margin:5px 0 0;
+      color:var(--muted);
+      font-size:11px;
+      font-weight:700;
+    }
+
+    .top-actions {
+      display:flex;
+      align-items:center;
+      justify-content:flex-end;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+
+    .btn {
+      min-height:38px;
+      padding:0 15px;
+      border:1px solid transparent;
+      border-radius:5px;
+      font-size:11px;
+      font-weight:900;
+      letter-spacing:.2px;
+    }
+
+    .btn-gold {
+      background:var(--gold);
+      color:#252525;
+    }
+
+    .btn-gold:hover {
+      background:var(--gold-hover);
+    }
+
+    .btn-secondary {
+      border-color:#aeb8c2;
+      background:#fff;
+      color:#203040;
+    }
+
+    .btn-secondary:hover {
+      background:#f3f5f7;
+    }
+
+    .btn:disabled {
+      opacity:.5;
+      cursor:not-allowed;
+    }
+
+    .view {
+      min-height:0;
+      flex:1;
+      padding:24px;
+      overflow:auto;
+    }
+
+    .report-panel {
+      min-width:1180px;
+      background:var(--panel);
+      border:1px solid var(--border);
+      border-top:4px solid var(--gold);
+      border-radius:8px;
+      box-shadow:0 4px 14px rgba(15,23,42,.06);
+      overflow:visible;
+    }
+
+    .panel-head {
+      min-height:61px;
+      padding:14px 18px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:18px;
+      border-bottom:1px solid var(--border);
+    }
+
+    .panel-head h2 {
+      margin:0;
+      color:#243447;
+      font-size:17px;
+      font-weight:900;
+    }
+
+    .refresh-pill {
+      display:inline-flex;
+      align-items:center;
+      gap:7px;
+      padding:7px 11px;
+      border:1px solid #ced5dc;
+      border-radius:999px;
+      background:#f7f9fb;
+      color:#485568;
+      font-size:10px;
+      font-weight:800;
+      white-space:nowrap;
+    }
+
+    .panel-body {
+      padding:18px;
+    }
+
+    .status-strip {
+      min-height:64px;
+      padding:12px 14px;
+      border:1px solid var(--border);
+      border-radius:6px;
+      background:#fbfcfd;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:16px;
+    }
+
+    .status-main {
+      display:flex;
+      align-items:center;
+      gap:12px;
+      min-width:0;
+    }
+
+    .status-dot {
+      width:13px;
+      height:13px;
+      flex:0 0 13px;
+      border-radius:50%;
+      background:#d29a00;
+      box-shadow:0 0 0 4px rgba(210,154,0,.12);
+    }
+
+    .status-dot.ok {
+      background:var(--green);
+      box-shadow:0 0 0 4px rgba(22,121,74,.12);
+    }
+
+    .status-dot.error {
+      background:var(--red);
+      box-shadow:0 0 0 4px rgba(180,35,24,.12);
+    }
+
+    .status-copy {
+      min-width:0;
+    }
+
+    .status-copy strong {
+      display:block;
+      color:#26374a;
+      font-size:12px;
+      font-weight:900;
+    }
+
+    .status-copy span {
+      display:block;
+      margin-top:3px;
+      color:var(--muted);
+      font-size:10px;
+      font-weight:600;
+      overflow-wrap:anywhere;
+    }
+
+    .status-meta {
+      display:flex;
+      align-items:center;
+      justify-content:flex-end;
+      gap:8px;
+      flex-wrap:wrap;
+    }
+
+    .metric-pill {
+      display:inline-flex;
+      align-items:center;
+      min-height:29px;
+      padding:0 10px;
+      border:1px solid #cad2da;
+      border-radius:999px;
+      background:#fff;
+      color:#39485a;
+      font-size:10px;
+      font-weight:900;
+      white-space:nowrap;
+    }
+
+    .filter-toolbar {
+      margin-top:14px;
+      padding:12px;
+      border:1px solid var(--border);
+      border-radius:6px;
+      background:#f7f9fb;
+      display:flex;
+      align-items:flex-end;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+
+    .filter-title {
+      margin-right:4px;
+      padding-bottom:10px;
+      color:#304156;
+      font-size:11px;
+      font-weight:900;
+      text-transform:uppercase;
+      letter-spacing:.8px;
+    }
+
+    .multi-filter {
+      position:relative;
+      min-width:210px;
+    }
+
+    .multi-filter > summary {
+      list-style:none;
+      height:39px;
+      padding:0 34px 0 11px;
+      border:1px solid #b8c2cc;
+      border-radius:5px;
+      background:#fff;
+      color:#27384b;
+      display:flex;
+      align-items:center;
+      position:relative;
+      font-size:11px;
+      font-weight:800;
+      cursor:pointer;
+      user-select:none;
+    }
+
+    .multi-filter > summary::-webkit-details-marker {
+      display:none;
+    }
+
+    .multi-filter > summary::after {
+      content:"▾";
+      position:absolute;
+      right:11px;
+      top:50%;
+      transform:translateY(-50%);
+      color:#5e6b7a;
+      font-size:12px;
+    }
+
+    .multi-filter[open] > summary {
+      border-color:var(--blue);
+      box-shadow:0 0 0 2px rgba(31,78,120,.12);
+    }
+
+    .filter-popover {
+      position:absolute;
+      z-index:500;
+      top:44px;
+      left:0;
+      width:310px;
+      max-height:330px;
+      padding:8px;
+      overflow:auto;
+      border:1px solid #aeb8c2;
+      border-radius:6px;
+      background:#fff;
+      box-shadow:0 12px 30px rgba(15,23,42,.18);
+    }
+
+    .filter-option {
+      min-height:32px;
+      padding:5px 7px;
+      display:flex;
+      align-items:center;
+      gap:8px;
+      border-radius:4px;
+      color:#2f3c4c;
+      font-size:10px;
+      font-weight:700;
+      cursor:pointer;
+    }
+
+    .filter-option:hover {
+      background:#f1f4f7;
+    }
+
+    .filter-option.select-all {
+      margin-bottom:5px;
+      padding-bottom:8px;
+      border-bottom:1px solid #e1e5e9;
+      color:var(--navy);
+      font-weight:900;
+    }
+
+    .filter-option input {
+      width:15px;
+      height:15px;
+      accent-color:var(--blue);
+    }
+
+    .clear-filters {
+      min-height:39px;
+      padding:0 13px;
+      border:1px solid #b8c2cc;
+      border-radius:5px;
+      background:#fff;
+      color:#334155;
+      font-size:10px;
+      font-weight:900;
+    }
+
+    .tab-bar {
+      margin-top:14px;
+      display:flex;
+      align-items:flex-end;
+      gap:4px;
+      border-bottom:1px solid #aeb8c2;
+    }
+
+    .report-tab {
+      min-height:39px;
+      padding:0 16px;
+      border:1px solid #b9c2cb;
+      border-bottom:none;
+      border-radius:6px 6px 0 0;
+      background:#e9edf1;
+      color:#405064;
+      font-size:11px;
+      font-weight:900;
+    }
+
+    .report-tab.active {
+      background:var(--navy);
+      color:#fff;
+      border-color:var(--navy);
+    }
+
+    .table-summary {
+      margin-left:auto;
+      padding:0 4px 10px;
+      color:#657183;
+      font-size:10px;
+      font-weight:800;
+    }
+
+    .table-wrap {
+      max-height:calc(100vh - 370px);
+      min-height:330px;
+      overflow:auto;
+      border:1px solid var(--border-dark);
+      border-top:none;
+      background:#fff;
+    }
+
+    table {
+      width:100%;
+      min-width:1810px;
+      border-collapse:separate;
+      border-spacing:0;
+      table-layout:fixed;
+      font-size:10px;
+    }
+
+    thead th {
+      position:sticky;
+      top:0;
+      z-index:12;
+      min-height:38px;
+      padding:10px 8px;
+      border-right:1px solid #63758a;
+      border-bottom:1px solid #63758a;
+      background:var(--navy);
+      color:#fff;
+      text-align:left;
+      font-size:9px;
+      font-weight:900;
+      line-height:1.15;
+      text-transform:uppercase;
+      letter-spacing:.3px;
+    }
+
+    tbody td {
+      min-height:54px;
+      padding:8px;
+      border-right:1px solid #d4d9de;
+      border-bottom:1px solid #d4d9de;
+      background:#fff;
+      color:#202a35;
+      vertical-align:top;
+      line-height:1.35;
+      overflow-wrap:anywhere;
+    }
+
+    tbody tr:nth-child(odd) td {
+      background:var(--row-alt);
+    }
+
+    tbody tr:hover td {
+      background:#fff8d8;
+    }
+
+    th:last-child,
+    td:last-child {
+      border-right:none;
+    }
+
+    .col-region {
+      width:105px;
+    }
+
+    .col-subregion {
+      width:125px;
+    }
+
+    .col-branch {
+      width:170px;
+    }
+
+    .col-unit {
+      width:115px;
+    }
+
+    .col-status {
+      width:82px;
+    }
+
+    .col-memo {
+      width:205px;
+    }
+
+    .col-problem {
+      width:225px;
+    }
+
+    .col-vendor {
+      width:160px;
+    }
+
+    .col-dropdown {
+      width:145px;
+    }
+
+    .col-ecd {
+      width:105px;
+    }
+
+    .col-notes {
+      width:225px;
+    }
+
+    .unit-main {
+      color:#23364b;
+      font-size:11px;
+      font-weight:900;
+    }
+
+    .unit-sub {
+      margin-top:3px;
+      color:#667589;
+      font-size:8px;
+      font-weight:700;
+    }
+
+    .status-badge {
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      min-width:59px;
+      min-height:23px;
+      padding:0 8px;
+      border-radius:999px;
+      font-size:9px;
+      font-weight:900;
+    }
+
+    .status-badge.oos {
+      background:var(--red-bg);
+      color:var(--red);
+      border:1px solid #f0b5b0;
+    }
+
+    .status-badge.active {
+      background:var(--green-bg);
+      color:var(--green);
+      border:1px solid #a8d8bf;
+    }
+
+    .memo-cell {
+      display:grid;
+      grid-template-columns:minmax(0,1fr) 29px;
+      align-items:start;
+      gap:7px;
+      min-height:42px;
+    }
+
+    .memo-text {
+      color:#2a3440;
+      white-space:pre-wrap;
+      overflow-wrap:anywhere;
+    }
+
+    .memo-text.empty {
+      color:#8a94a2;
+      font-style:italic;
+    }
+
+    .memo-btn {
+      width:29px;
+      height:29px;
+      padding:0;
+      border:1px solid #9eabb8;
+      border-radius:4px;
+      background:#fff;
+      color:var(--navy);
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+    }
+
+    .memo-btn:hover {
+      border-color:var(--blue);
+      background:#edf4fa;
+    }
+
+    .memo-btn svg {
+      width:15px;
+      height:15px;
+      fill:currentColor;
+    }
+
+    .row-select {
+      width:100%;
+      min-height:31px;
+      padding:4px 25px 4px 7px;
+      border:1px solid #aeb8c2;
+      border-radius:4px;
+      background:#fff;
+      color:#27384a;
+      font-size:9px;
+      font-weight:700;
+    }
+
+    .row-select:focus {
+      border-color:var(--blue);
+      outline:none;
+      box-shadow:0 0 0 2px rgba(31,78,120,.12);
+    }
+
+    .ecd-main {
+      color:#26384b;
+      font-size:10px;
+      font-weight:900;
+    }
+
+    .ecd-past {
+      color:var(--red);
+    }
+
+    .empty-state {
+      padding:55px 20px;
+      color:#687588;
+      text-align:center;
+      font-size:12px;
+      font-weight:800;
+    }
+
+    .source-warning {
+      display:none;
+      margin-bottom:12px;
+      padding:11px 13px;
+      border:1px solid #e9b6b1;
+      border-radius:5px;
+      background:#fff3f2;
+      color:#8f261e;
+      font-size:10px;
+      font-weight:800;
+      line-height:1.45;
+    }
+
+    .source-warning.show {
+      display:block;
+    }
+
+    .modal-backdrop {
+      position:fixed;
+      inset:0;
+      z-index:9000;
+      display:none;
+      align-items:center;
+      justify-content:center;
+      padding:24px;
+      background:rgba(15,23,42,.55);
+    }
+
+    .modal-backdrop.open {
+      display:flex;
+    }
+
+    .memo-modal {
+      width:min(720px,96vw);
+      padding:0;
+      border-radius:8px;
+      background:#fff;
+      box-shadow:0 22px 55px rgba(0,0,0,.3);
+      overflow:hidden;
+    }
+
+    .memo-modal-head {
+      min-height:56px;
+      padding:13px 16px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      background:var(--navy);
+      color:#fff;
+    }
+
+    .memo-modal-head h3 {
+      margin:0;
+      font-size:14px;
+      font-weight:900;
+    }
+
+    .modal-close {
+      width:30px;
+      height:30px;
+      border:none;
+      border-radius:4px;
+      background:rgba(255,255,255,.13);
+      color:#fff;
+      font-size:19px;
+      line-height:1;
+    }
+
+    .memo-modal-body {
+      padding:17px;
+    }
+
+    .memo-record {
+      margin-bottom:10px;
+      color:#5c6978;
+      font-size:10px;
+      font-weight:800;
+    }
+
+    #memo-textarea {
+      width:100%;
+      min-height:190px;
+      resize:vertical;
+      padding:11px;
+      border:1px solid #aeb8c2;
+      border-radius:5px;
+      color:#263444;
+      font-size:11px;
+      line-height:1.5;
+    }
+
+    #memo-textarea:focus {
+      outline:none;
+      border-color:var(--blue);
+      box-shadow:0 0 0 2px rgba(31,78,120,.12);
+    }
+
+    .memo-modal-actions {
+      margin-top:13px;
+      display:flex;
+      align-items:center;
+      justify-content:flex-end;
+      gap:8px;
+    }
+
+    @media (max-width:1100px) {
+      .sidebar {
+        width:220px;
+        flex-basis:220px;
+      }
+
+      .brand-name {
+        font-size:31px;
+      }
+
+      .topbar {
+        padding:14px 18px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="login-overlay">
+    <form class="login-box" id="login-form">
+      <span class="wheel" aria-hidden="true"></span>
+      <h2>OSC+ Login</h2>
+      <div id="login-error" class="login-error">
+        Incorrect password
+      </div>
+      <input
+        id="login-password"
+        type="password"
+        autocomplete="current-password"
+        placeholder="Enter Password"
+      >
+      <button type="submit">ENTER</button>
+    </form>
+  </div>
+
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="wheel" aria-hidden="true"></span>
+      <div class="brand-copy">
+        <span class="brand-name">
+          OSC<span class="brand-plus">+</span>
+        </span>
+        <span class="brand-subtitle">Analytics</span>
+      </div>
+    </div>
+
+    <a class="nav-item" href="index.html#report">
+      OSC+ Analytics
+    </a>
+    <a class="nav-item" href="index.html#config">
+      Customer Configuration
+    </a>
+    <a class="nav-item" href="opd.html">
+      Vended Operational Performance
+    </a>
+    <a
+      class="nav-item active"
+      href="garda_below90_reporting.html"
+    >
+      Garda Below 90% Reporting
+    </a>
+
+    <div class="sidebar-truck">
+      <svg
+        width="150"
+        height="76"
+        viewBox="0 0 120 60"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <line
+          x1="0"
+          y1="57"
+          x2="120"
+          y2="57"
+          stroke="#4a4b50"
+          stroke-width="2"
+          stroke-dasharray="10 5"
+        />
+        <rect
+          x="5"
+          y="15"
+          width="70"
+          height="35"
+          fill="var(--gold)"
+          rx="3"
+        />
+        <path
+          d="M78 25 H 92 L 105 35 V 50 H 78 Z"
+          fill="var(--gold)"
+        />
+        <path
+          d="M82 28 H 90 L 98 35 H 82 Z"
+          fill="#2a2b30"
+        />
+        <circle
+          cx="25"
+          cy="50"
+          r="7"
+          fill="#111"
+          stroke="#888"
+          stroke-width="1.5"
+        />
+        <circle
+          cx="60"
+          cy="50"
+          r="7"
+          fill="#111"
+          stroke="#888"
+          stroke-width="1.5"
+        />
+        <circle
+          cx="91"
+          cy="50"
+          r="7"
+          fill="#111"
+          stroke="#888"
+          stroke-width="1.5"
+        />
+      </svg>
+    </div>
+  </aside>
+
+  <main class="app">
+    <header class="topbar">
+      <div class="title">
+        <h1>Garda Below 90% Reporting</h1>
+        <p>
+          Live VRO-level reporting for approved vended branches
+          below 90% usefulness
+        </p>
+      </div>
+
+      <div class="top-actions">
+        <button
+          class="btn btn-secondary"
+          id="refresh-btn"
+          type="button"
+        >
+          Refresh Data
+        </button>
+        <button
+          class="btn btn-gold"
+          id="export-btn"
+          type="button"
+          disabled
+        >
+          Export VRO Report
+        </button>
+      </div>
+    </header>
+
+    <section class="view">
+      <div
+        id="source-warning"
+        class="source-warning"
+      ></div>
+
+      <div class="report-panel">
+        <div class="panel-head">
+          <h2>Below 90% Useful Branches</h2>
+          <span
+            id="updated-pill"
+            class="refresh-pill"
+          >
+            Connecting to Firebase...
+          </span>
+        </div>
+
+        <div class="panel-body">
+          <div class="status-strip">
+            <div class="status-main">
+              <div
+                class="status-dot"
+                id="status-dot"
+              ></div>
+              <div class="status-copy">
+                <strong id="status-title">
+                  Waiting for Firebase authentication
+                </strong>
+                <span id="status-detail">
+                  Sign in to load the live workbook.
+                </span>
+              </div>
+            </div>
+
+            <div class="status-meta">
+              <span
+                class="metric-pill"
+                id="branch-count-pill"
+              >
+                Branches —
+              </span>
+              <span
+                class="metric-pill"
+                id="active-count-pill"
+              >
+                Active VROs —
+              </span>
+              <span
+                class="metric-pill"
+                id="archive-count-pill"
+              >
+                RTS &gt;90% —
+              </span>
+            </div>
+          </div>
+
+          <div class="filter-toolbar">
+            <div class="filter-title">Filters</div>
+
+            <details
+              class="multi-filter"
+              id="region-filter"
+            >
+              <summary id="region-filter-label">
+                All Regions
+              </summary>
+              <div
+                class="filter-popover"
+                id="region-filter-options"
+              ></div>
+            </details>
+
+            <details
+              class="multi-filter"
+              id="subregion-filter"
+            >
+              <summary id="subregion-filter-label">
+                All Subregions
+              </summary>
+              <div
+                class="filter-popover"
+                id="subregion-filter-options"
+              ></div>
+            </details>
+
+            <details
+              class="multi-filter"
+              id="branch-filter"
+            >
+              <summary id="branch-filter-label">
+                All Branches
+              </summary>
+              <div
+                class="filter-popover"
+                id="branch-filter-options"
+              ></div>
+            </details>
+
+            <button
+              class="clear-filters"
+              id="clear-filters-btn"
+              type="button"
+            >
+              Select All
+            </button>
+          </div>
+
+          <div class="tab-bar">
+            <button
+              class="report-tab active"
+              type="button"
+              data-tab="active"
+            >
+              Under 90% Useful Branches
+            </button>
+            <button
+              class="report-tab"
+              type="button"
+              data-tab="archive"
+            >
+              RTS &gt;90% Archive
+            </button>
+
+            <div
+              class="table-summary"
+              id="table-summary"
+            >
+              —
+            </div>
+          </div>
+
+          <div
+            style="
+              margin:10px 0 8px;
+              color:#667589;
+              font-size:9px;
+              font-weight:700;
+            "
+          >
+            Firebase history is keyed to the VRO number. When the same
+            open VRO returns to below-90% reporting, its saved notes and
+            dropdown selections return with it.
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th class="col-region">Garda Region</th>
+                  <th class="col-subregion">Garda Subregion</th>
+                  <th class="col-branch">Branch</th>
+                  <th class="col-unit">Unit #</th>
+                  <th class="col-status">Status</th>
+                  <th class="col-memo">Action/Next Steps</th>
+                  <th class="col-problem">Problem</th>
+                  <th class="col-vendor">Vendor</th>
+                  <th class="col-dropdown">Estimate Status</th>
+                  <th class="col-dropdown">Parts Status</th>
+                  <th class="col-ecd">ECD</th>
+                  <th class="col-dropdown">Hold-Up Issue</th>
+                  <th class="col-notes">Notes</th>
+                </tr>
+              </thead>
+              <tbody id="report-body"></tbody>
+            </table>
+
+            <div
+              class="empty-state hidden"
+              id="empty-state"
+            >
+              No rows match the current selection.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div
+    class="modal-backdrop"
+    id="memo-modal"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="memo-modal-title"
+  >
+    <div class="memo-modal">
+      <div class="memo-modal-head">
+        <h3 id="memo-modal-title">
+          Edit Memo
+        </h3>
+        <button
+          class="modal-close"
+          id="memo-close-btn"
+          type="button"
+          aria-label="Close memo editor"
+        >
+          ×
+        </button>
+      </div>
+
+      <div class="memo-modal-body">
+        <div
+          class="memo-record"
+          id="memo-record"
+        ></div>
+
+        <textarea
+          id="memo-textarea"
+          placeholder="Enter the update..."
+        ></textarea>
+
+        <div class="memo-modal-actions">
+          <button
+            class="btn btn-secondary"
+            id="memo-cancel-btn"
+            type="button"
+          >
+            Cancel
+          </button>
+          <button
+            class="btn btn-gold"
+            id="memo-save-btn"
+            type="button"
+          >
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+const FIREBASE_CONFIG={apiKey:"AIzaSyCr3VAldI-pPCb7APx3rJAEZvf_nl0iz1g",authDomain:"workflow-dashboard-e6134.firebaseapp.com",databaseURL:"https://workflow-dashboard-e6134-default-rtdb.firebaseio.com",projectId:"workflow-dashboard-e6134",storageBucket:"workflow-dashboard-e6134.firebasestorage.app",messagingSenderId:"641710248116",appId:"1:641710248116:web:1546701879d573041447e1"};
+const MASTER_EMAIL="maintenance@ameritfleet.com";
+const WORKBOOK_PATH="master_workFLOWtest.xlsx";
+
+const REPORT_ROOT=
+  "operationalPerformanceTables/gardaBelow90Reporting/records";
+
+const OPEN_STATUSES=new Set([
+  "UNASSIGNED ROS",
+  "ESTIMATES",
+  "PENDING ESTIMATES",
+  "WORK IN PROGRESS"
+]);
+
+const ESTIMATE_OPTIONS=[
+  "",
+  "Pending Internal Review",
+  "Garda Pending Approval",
+  "Approved"
+];
+
+const PARTS_OPTIONS=[
+  "",
+  "Ordered",
+  "Backordered",
+  "Parts on Hand"
+];
+
+const HOLD_UP_OPTIONS=[
+  "",
+  "OSC",
+  "Garda",
+  "Vendor",
+  "N/A"
+];
+
+const APPROVED_BRANCHES=[
+["Birmingham, AL","260-22"],["Charleston, SC","250-92"],["Hampton-Chespeake, VA","140-31"],["Knoxville, TN","270-10"],["Memphis, TN","270-32"],["Myrtle Beach, SC","250-97"],["Nashville, TN","270-08"],["Richmond, VA","140-89"],["Roanoke, VA","140-24"],["Kansas City, KS","130-63"],["Lexington, KY","270-65"],["Salina, KS","130-62"],["St. Louis, MO","130-69"],["Wichita, KS","130-65"],["Cincinnati, OH","190-67"],["Columbus, OH","190-64"],["Dayton, OH","190-65"],["Grand Rapids, MI","190-60"],["Bloomington, IL","190-24"],["Chippewa Falls, WI","190-53"],["Davenport, IA","190-45"],["Duluth, MN","190-58"],["Green Bay, WI","190-55"],["Madison, WI","190-56"],["Dover, DE","140-92"],["Johnstown, PA","140-82"],["Wilkes Barre, PA","140-95"],["Burlington, VT","144-21"],["Rochester, NY","280-55"],["Schenectady, NY","140-27"],["West Hempstead, NY","140-28"],["Austin, TX","130-75"],["Corpus Christi, TX","130-72"],["El Paso, TX","130-20"],["Laredo, TX","130-76"],["Little Rock, AR","260-07"],["Lubbock, TX","130-11"],["McAllen, TX","130-74"],["Shreveport, LA","260-03"],["Jackson, MS","260-23"],["Jacksonville, FL","260-19"],["Lafayette, LA","260-01"],["Mobile, AL","260-31"],["New Orleans, LA","260-02"],["Red Bluff, CA","120-15"],["Sparks, NV","120-61"],["Bend, OR","230-60"],["Boise, ID","230-39"],["Helena, MT","230-87"],["Lewiston, ID","230-80"],["Medford, OR","230-59"],["Missoula, MT","230-91"],["Mt. Vernon, WA","230-53"],["Renton, WA","230-51"],["Roseburg, OR","230-58"],["Spokane, WA","230-50"],["Tacoma, WA","230-52"],["Wenatchee, WA","230-49"],["Yakima, WA","230-47"],["Santa Maria, CA","120-23"],["Albuquerque, NM","130-88"],["Casper, WY","230-95"],["Cheyenne, WY","230-96"],["Colorado Springs, CO","230-16"],["Flagstaff, AZ","120-27"],["Grand Junction, CO","230-34"],["Tucson, AZ","120-82"]
+];
+const BRANCH_BY_CODE=new Map(
+  APPROVED_BRANCHES.map(([name,code])=>[
+    code.replace(/\D/g,""),
+    {name,code}
+  ])
+);
+const APPROVED_CODES=new Set(
+  BRANCH_BY_CODE.keys()
+);
+
+const $=selector=>document.querySelector(selector);
+const $$=selector=>[
+  ...document.querySelectorAll(selector)
+];
+
+let db=null;
+let reportDateKey="";
+let workbookRows=[];
+let branchMetrics=new Map();
+let oosByUnit=new Map();
+let firebaseRecords={};
+let activeRows=[];
+let archiveRows=[];
+let selectedTab="active";
+let recordsListener=null;
+let memoContext=null;
+let loading=false;
+
+const filterState={
+  region:{
+    values:[],
+    selected:new Set(),
+    initialized:false
+  },
+  subregion:{
+    values:[],
+    selected:new Set(),
+    initialized:false
+  },
+  branch:{
+    values:[],
+    selected:new Set(),
+    initialized:false
+  }
+};
+
+function clean(value){
+  return String(value??"").trim();
+}
+
+function upper(value){
+  return clean(value).toUpperCase();
+}
+
+function isBlank(value){
+  return value===null||
+    value===undefined||
+    clean(value)==="";
+}
+
+function toNumber(value){
+  const number=Number(value);
+  return Number.isFinite(number)
+    ?number
+    :0;
+}
+
+function safeFirebaseKey(value){
+  return clean(value)
+    .replace(/[.#$\[\]\/]/g,"_")
+    .slice(0,240);
+}
+
+function extractBranchCode(value){
+  const text=clean(value);
+  const hyphenMatch=text.match(
+    /(?:^|\D)(\d{3})-(\d{2})(?:\D|$)/
+  );
+
+  if(hyphenMatch){
+    return (
+      hyphenMatch[1]+
+      hyphenMatch[2]
+    );
+  }
+
+  const compactMatches=text.match(
+    /(?:^|\D)(\d{5})(?:\D|$)/g
+  );
+
+  if(compactMatches?.length){
+    return compactMatches[
+      compactMatches.length-1
+    ].replace(/\D/g,"");
+  }
+
+  return "";
+}
+
+function normalizedUnit(value){
+  return upper(value)
+    .replace(/\s+/g,"");
+}
+
+function parseDate(value){
+  if(value instanceof Date){
+    return Number.isNaN(value.getTime())
+      ?null
+      :value;
+  }
+
+  if(typeof value==="number"){
+    const parsed=XLSX.SSF.parse_date_code(
+      value
+    );
+
+    if(parsed){
+      return new Date(
+        parsed.y,
+        parsed.m-1,
+        parsed.d,
+        parsed.H||0,
+        parsed.M||0,
+        Math.floor(parsed.S||0)
+      );
+    }
+  }
+
+  if(isBlank(value)){
+    return null;
+  }
+
+  const parsed=new Date(value);
+
+  return Number.isNaN(parsed.getTime())
+    ?null
+    :parsed;
+}
+
+function localDateKey(date=new Date()){
+  const year=date.getFullYear();
+  const month=String(
+    date.getMonth()+1
+  ).padStart(2,"0");
+  const day=String(
+    date.getDate()
+  ).padStart(2,"0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function dateText(value){
+  const date=parseDate(value);
+
+  if(!date){
+    return "";
+  }
+
+  return date.toLocaleDateString(
+    "en-US",
+    {
+      month:"2-digit",
+      day:"2-digit",
+      year:"numeric"
+    }
+  );
+}
+
+function percentText(value){
+  const number=Number(value);
+
+  if(!Number.isFinite(number)){
+    return "—";
+  }
+
+  return `${(number*100).toFixed(1)}%`;
+}
+
+function escapeHtml(value){
+  return clean(value)
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;")
+    .replace(/'/g,"&#039;");
+}
+
+function headerIndex(
+  header,
+  names,
+  fallback=-1
+){
+  const normalized=header.map(value=>
+    upper(value).replace(/[^A-Z0-9]/g,"")
+  );
+
+  for(const name of names){
+    const target=upper(name)
+      .replace(/[^A-Z0-9]/g,"");
+    const index=normalized.indexOf(target);
+
+    if(index>=0){
+      return index;
+    }
+  }
+
+  return fallback;
+}
+
+function sheetAoa(
+  workbook,
+  matcher
+){
+  const sheetName=workbook.SheetNames.find(
+    name=>matcher(
+      name.toLowerCase()
+    )
+  );
+
+  if(!sheetName){
+    return {
+      name:"",
+      aoa:[]
+    };
+  }
+
+  return {
+    name:sheetName,
+    aoa:XLSX.utils.sheet_to_json(
+      workbook.Sheets[sheetName],
+      {
+        header:1,
+        defval:"",
+        raw:true
+      }
+    )
+  };
+}
+
+function setStatus(
+  state,
+  title,
+  detail
+){
+  const dot=$("#status-dot");
+  dot.className=`status-dot ${state||""}`;
+  $("#status-title").textContent=title;
+  $("#status-detail").textContent=detail;
+}
+
+function showWarnings(warnings=[]){
+  const box=$("#source-warning");
+
+  if(!warnings.length){
+    box.className="source-warning";
+    box.innerHTML="";
+    return;
+  }
+
+  box.className="source-warning show";
+  box.innerHTML=warnings
+    .map(warning=>
+      `<div>• ${escapeHtml(warning)}</div>`
+    )
+    .join("");
+}
+
+async function fetchWorkbookBuffer(){
+  const reference=firebase.storage()
+    .ref()
+    .child(WORKBOOK_PATH);
+
+  const url=await Promise.race([
+    reference.getDownloadURL(),
+    new Promise((_,reject)=>
+      setTimeout(
+        ()=>reject(
+          new Error(
+            "Firebase download URL timed out."
+          )
+        ),
+        20000
+      )
+    )
+  ]);
+
+  const controller=
+    new AbortController();
+  const timeout=setTimeout(
+    ()=>controller.abort(),
+    60000
+  );
+
+  try{
+    const response=await fetch(
+      url+
+        (url.includes("?")?"&":"?")+
+        `_=${Date.now()}`,
+      {
+        cache:"no-store",
+        signal:controller.signal
+      }
+    );
+
+    if(!response.ok){
+      throw new Error(
+        `Workbook download returned HTTP ${response.status}.`
+      );
+    }
+
+    const buffer=await response.arrayBuffer();
+    const signature=new Uint8Array(
+      buffer.slice(0,2)
+    );
+
+    if(
+      signature[0]!==0x50||
+      signature[1]!==0x4b
+    ){
+      throw new Error(
+        "Firebase response is not a valid XLSX workbook."
+      );
+    }
+
+    return buffer;
+  }catch(error){
+    if(error?.name==="AbortError"){
+      throw new Error(
+        "Workbook download timed out after 60 seconds."
+      );
+    }
+
+    throw error;
+  }finally{
+    clearTimeout(timeout);
+  }
+}
+
+function parseUsefulBranches(
+  aoa,
+  warnings
+){
+  if(!aoa.length){
+    throw new Error(
+      "Useful % worksheet was not found."
+    );
+  }
+
+  const header=aoa[0]||[];
+  const regionIndex=headerIndex(
+    header,
+    ["GARDA REGION"],
+    0
+  );
+  const subregionIndex=headerIndex(
+    header,
+    ["GARDA SUBREGION"],
+    1
+  );
+  const branchIndex=headerIndex(
+    header,
+    ["BRANCH"],
+    2
+  );
+  const maxRoutesIndex=headerIndex(
+    header,
+    ["TOTAL - MAX ROUTES"],
+    22
+  );
+  const totalUnitsIndex=headerIndex(
+    header,
+    ["TOTAL - TOTAL UNITS"],
+    23
+  );
+  const oosUnitsIndex=headerIndex(
+    header,
+    ["TOTAL - OOS UNITS"],
+    24
+  );
+  const usefulIndex=headerIndex(
+    header,
+    ["TOTAL - USEFUL %"],
+    27
+  );
+
+  const all=new Map();
+
+  for(
+    let rowIndex=1;
+    rowIndex<aoa.length;
+    rowIndex++
+  ){
+    const row=aoa[rowIndex]||[];
+    const code=extractBranchCode(
+      row[branchIndex]
+    );
+
+    if(!APPROVED_CODES.has(code)){
+      continue;
+    }
+
+    const maxRoutes=toNumber(
+      row[maxRoutesIndex]
+    );
+    const totalUnits=toNumber(
+      row[totalUnitsIndex]
+    );
+    const oosUnits=toNumber(
+      row[oosUnitsIndex]
+    );
+    const usefulRaw=Number(
+      row[usefulIndex]
+    );
+    const useful=Number.isFinite(
+      usefulRaw
+    )
+      ?usefulRaw
+      :maxRoutes
+        ?Math.max(
+            0,
+            totalUnits-oosUnits
+          )/maxRoutes
+        :null;
+
+    all.set(
+      code,
+      {
+        code,
+        formattedCode:
+          BRANCH_BY_CODE.get(code)
+            ?.code||code,
+        region:clean(
+          row[regionIndex]
+        ),
+        subregion:clean(
+          row[subregionIndex]
+        ),
+        branch:
+          BRANCH_BY_CODE.get(code)
+            ?.name||
+          clean(row[branchIndex]),
+        maxRoutes,
+        totalUnits,
+        oosUnits,
+        useful:
+          Number.isFinite(useful)
+            ?useful
+            :null
+      }
+    );
+  }
+
+  const missing=[
+    ...APPROVED_CODES
+  ].filter(code=>!all.has(code));
+
+  if(missing.length){
+    warnings.push(
+      `${missing.length} approved vended branch code(s) were not present on the Useful % worksheet.`
+    );
+  }
+
+  return all;
+}
+
+function parseOosUnits(aoa){
+  const map=new Map();
+
+  if(!aoa.length){
+    return map;
+  }
+
+  const header=aoa[0]||[];
+  const regionIndex=headerIndex(
+    header,
+    ["GARDA REGION"],
+    0
+  );
+  const subregionIndex=headerIndex(
+    header,
+    ["GARDA SUBREGION"],
+    1
+  );
+  const branchIndex=headerIndex(
+    header,
+    ["GARDA SHOPNAME"],
+    2
+  );
+  const unitIndex=headerIndex(
+    header,
+    ["UNIT #","UNIT"],
+    3
+  );
+  const statusIndex=headerIndex(
+    header,
+    ["OOS","STATUS"],
+    8
+  );
+
+  for(
+    let rowIndex=1;
+    rowIndex<aoa.length;
+    rowIndex++
+  ){
+    const row=aoa[rowIndex]||[];
+    const branchCode=extractBranchCode(
+      row[branchIndex]
+    );
+    const unit=normalizedUnit(
+      row[unitIndex]
+    );
+
+    if(
+      !unit||
+      !APPROVED_CODES.has(branchCode)
+    ){
+      continue;
+    }
+
+    map.set(
+      unit,
+      {
+        unit,
+        branchCode,
+        region:clean(
+          row[regionIndex]
+        ),
+        subregion:clean(
+          row[subregionIndex]
+        ),
+        branch:
+          BRANCH_BY_CODE.get(branchCode)
+            ?.name||
+          clean(row[branchIndex]),
+        status:
+          upper(row[statusIndex])==="OOS"
+            ?"OOS"
+            :"ACTIVE"
+      }
+    );
+  }
+
+  return map;
+}
+
+function mergeVroRecord(
+  existing,
+  incoming
+){
+  if(!existing){
+    return {
+      ...incoming,
+      tasks:new Set(
+        incoming.problemSource
+          ?[incoming.problemSource]
+          :[]
+      ),
+      vendors:new Set(
+        incoming.vendor
+          ?[incoming.vendor]
+          :[]
+      )
+    };
+  }
+
+  if(incoming.problemSource){
+    existing.tasks.add(
+      incoming.problemSource
+    );
+  }
+
+  if(incoming.vendor){
+    existing.vendors.add(
+      incoming.vendor
+    );
+  }
+
+  if(
+    !parseDate(existing.ecd)&&
+    parseDate(incoming.ecd)
+  ){
+    existing.ecd=incoming.ecd;
+  }
+
+  if(
+    parseDate(incoming.opened)&&
+    (
+      !parseDate(existing.opened)||
+      parseDate(incoming.opened)<
+        parseDate(existing.opened)
+    )
+  ){
+    existing.opened=incoming.opened;
+  }
+
+  return existing;
+}
+
+function parseOpenVros(
+  aoa,
+  usefulMap,
+  oosMap,
+  warnings
+){
+  if(!aoa.length){
+    throw new Error(
+      "VRO Export worksheet was not found."
+    );
+  }
+
+  const header=aoa[0]||[];
+  const customerIndex=headerIndex(
+    header,
+    ["CUSTOMER"],
+    0
+  );
+  const vinIndex=headerIndex(
+    header,
+    ["VEHICLE","VIN"],
+    2
+  );
+  const unitIndex=headerIndex(
+    header,
+    ["UNIT NO","UNIT NUMBER","UNIT"],
+    3
+  );
+  const repclassIndex=headerIndex(
+    header,
+    ["TYPE","REPCLASS"],
+    4
+  );
+  const taskIndex=headerIndex(
+    header,
+    ["TASK"],
+    5
+  );
+  const orderIndex=headerIndex(
+    header,
+    ["ORDER"],
+    7
+  );
+  const openedIndex=headerIndex(
+    header,
+    ["OPENED"],
+    8
+  );
+  const ecdIndex=headerIndex(
+    header,
+    ["UNIT DUE DATE","ECD"],
+    11
+  );
+  const vendorIndex=headerIndex(
+    header,
+    ["VENDOR"],
+    12
+  );
+  const vroStatusIndex=headerIndex(
+    header,
+    ["STATUS"],
+    14
+  );
+
+  const orders=new Map();
+  const under90Codes=new Set(
+    [...usefulMap.values()]
+      .filter(branch=>
+        branch.useful!==null&&
+        branch.useful<0.90
+      )
+      .map(branch=>branch.code)
+  );
+
+  let missingOrderRows=0;
+
+  for(
+    let rowIndex=1;
+    rowIndex<aoa.length;
+    rowIndex++
+  ){
+    const row=aoa[rowIndex]||[];
+    const customer=clean(
+      row[customerIndex]
+    );
+
+    if(!/\bGARDA\b/i.test(customer)){
+      continue;
+    }
+
+    const branchCode=extractBranchCode(
+      customer
+    );
+    const vroStatus=upper(
+      row[vroStatusIndex]
+    );
+
+    if(
+      !under90Codes.has(branchCode)||
+      !OPEN_STATUSES.has(vroStatus)
+    ){
+      continue;
+    }
+
+    const order=clean(
+      row[orderIndex]
+    );
+
+    if(!order){
+      missingOrderRows++;
+      continue;
+    }
+
+    const unit=normalizedUnit(
+      row[unitIndex]
+    );
+    const branch=usefulMap.get(
+      branchCode
+    );
+    const unitRecord=oosMap.get(
+      unit
+    );
+
+    const incoming={
+      recordKey:safeFirebaseKey(order),
+      order,
+      vin:clean(row[vinIndex]),
+      unit,
+      region:
+        branch?.region||
+        unitRecord?.region||
+        "",
+      subregion:
+        branch?.subregion||
+        unitRecord?.subregion||
+        "",
+      branch:
+        branch?.branch||
+        unitRecord?.branch||
+        customer,
+      branchCode,
+      branchUseful:
+        branch?.useful??null,
+      assetStatus:
+        unitRecord?.status||
+        "ACTIVE",
+      vroStatus,
+      repclass:clean(
+        row[repclassIndex]
+      ),
+      problemSource:clean(
+        row[taskIndex]
+      ),
+      vendor:clean(
+        row[vendorIndex]
+      ),
+      ecd:row[ecdIndex],
+      opened:row[openedIndex]
+    };
+
+    orders.set(
+      order,
+      mergeVroRecord(
+        orders.get(order),
+        incoming
+      )
+    );
+  }
+
+  if(missingOrderRows){
+    warnings.push(
+      `${missingOrderRows} below-90% VRO row(s) were excluded because the Order field was blank.`
+    );
+  }
+
+  return [
+    ...orders.values()
+  ]
+    .map(record=>({
+      ...record,
+      problemSource:[
+        ...record.tasks
+      ].filter(Boolean).join(" | "),
+      vendor:[
+        ...record.vendors
+      ].filter(Boolean).join(" | ")
+    }))
+    .sort((a,b)=>
+      String(a.region).localeCompare(
+        String(b.region)
+      )||
+      String(a.subregion).localeCompare(
+        String(b.subregion)
+      )||
+      String(a.branch).localeCompare(
+        String(b.branch)
+      )||
+      String(a.unit).localeCompare(
+        String(b.unit)
+      )||
+      String(a.order).localeCompare(
+        String(b.order)
+      )
+    );
+}
+
+function parseWorkbook(buffer){
+  const warnings=[];
+  const workbook=XLSX.read(
+    buffer,
+    {
+      type:"array",
+      cellDates:true
+    }
+  );
+
+  const useful=sheetAoa(
+    workbook,
+    name=>name.trim()==="useful %"
+  );
+  const oos=sheetAoa(
+    workbook,
+    name=>name.includes("oos garda")
+  );
+  const vro=sheetAoa(
+    workbook,
+    name=>name.includes("vro export")
+  );
+
+  branchMetrics=parseUsefulBranches(
+    useful.aoa,
+    warnings
+  );
+  oosByUnit=parseOosUnits(
+    oos.aoa
+  );
+
+  const rows=parseOpenVros(
+    vro.aoa,
+    branchMetrics,
+    oosByUnit,
+    warnings
+  );
+
+  reportDateKey=localDateKey();
+
+  return {
+    rows,
+    warnings,
+    workbookSheets:workbook.SheetNames
+  };
+}
+
+function recordEditableValues(record){
+  return {
+    actionNextSteps:clean(
+      record?.actionNextSteps
+    ),
+    problem:clean(
+      record?.problem
+    ),
+    notes:clean(
+      record?.notes
+    ),
+    estimateStatus:clean(
+      record?.estimateStatus
+    ),
+    partsStatus:clean(
+      record?.partsStatus
+    ),
+    holdUpIssue:clean(
+      record?.holdUpIssue
+    )
+  };
+}
+
+function comparableRecord(record){
+  return JSON.stringify({
+    state:record.state||"",
+    order:record.order||"",
+    vin:record.vin||"",
+    unit:record.unit||"",
+    region:record.region||"",
+    subregion:record.subregion||"",
+    branch:record.branch||"",
+    branchCode:record.branchCode||"",
+    branchUseful:
+      record.branchUseful??null,
+    assetStatus:record.assetStatus||"",
+    vroStatus:record.vroStatus||"",
+    repclass:record.repclass||"",
+    problemSource:
+      record.problemSource||"",
+    vendor:record.vendor||"",
+    ecd:dateText(record.ecd),
+    opened:dateText(record.opened),
+    archivedAt:record.archivedAt||"",
+    returnUseful:
+      record.returnUseful??null
+  });
+}
+
+async function synchronizeTrackingRecords(
+  parsedRows,
+  existingRecords
+){
+  const updates={};
+  const nowIso=new Date().toISOString();
+  const activeKeys=new Set(
+    parsedRows.map(row=>row.recordKey)
+  );
+
+  parsedRows.forEach(row=>{
+    const existing=
+      existingRecords[
+        row.recordKey
+      ]||{};
+    const editable=
+      recordEditableValues(existing);
+
+    const next={
+      ...existing,
+      ...row,
+      ...editable,
+      state:"active",
+      firstSeenUnder90:
+        existing.firstSeenUnder90||
+        nowIso,
+      lastSeenUnder90:nowIso,
+      archivedAt:null,
+      returnUseful:null,
+      updatedFromWorkbookAt:nowIso
+    };
+
+    if(
+      comparableRecord(existing)!==
+      comparableRecord(next)||
+      existing.state!=="active"
+    ){
+      updates[row.recordKey]=next;
+    }
+  });
+
+  Object.entries(existingRecords)
+    .forEach(([recordKey,record])=>{
+      if(activeKeys.has(recordKey)){
+        return;
+      }
+
+      const currentBranch=
+        branchMetrics.get(
+          record.branchCode
+        );
+
+      if(
+        record.state==="active"&&
+        currentBranch&&
+        currentBranch.useful!==null&&
+        currentBranch.useful>=0.90
+      ){
+        updates[recordKey]={
+          ...record,
+          state:"archived",
+          archivedAt:
+            record.archivedAt||
+            nowIso,
+          returnUseful:
+            currentBranch.useful,
+          updatedFromWorkbookAt:nowIso
+        };
+        return;
+      }
+
+      if(
+        record.state==="active"&&
+        currentBranch&&
+        currentBranch.useful!==null&&
+        currentBranch.useful<0.90
+      ){
+        /*
+          The branch is still below 90%, but the VRO is no longer open.
+          Preserve the record and notes without putting it into the
+          Returned-to-Above-90% archive.
+        */
+        updates[recordKey]={
+          ...record,
+          state:"closed",
+          closedAt:
+            record.closedAt||
+            nowIso,
+          updatedFromWorkbookAt:nowIso
+        };
+      }
+    });
+
+  if(Object.keys(updates).length){
+    await db.ref(REPORT_ROOT)
+      .update(updates);
+  }
+}
+
+function mergeRowsWithFirebase(){
+  const currentByKey=new Map(
+    workbookRows.map(row=>[
+      row.recordKey,
+      row
+    ])
+  );
+
+  activeRows=workbookRows
+    .map(row=>{
+      const saved=
+        firebaseRecords[
+          row.recordKey
+        ]||{};
+
+      return {
+        ...saved,
+        ...row,
+        ...recordEditableValues(saved),
+        state:"active"
+      };
+    });
+
+  archiveRows=Object.values(
+    firebaseRecords
+  )
+    .filter(record=>
+      record&&
+      record.state==="archived"
+    )
+    .map(record=>({
+      ...record,
+      ...recordEditableValues(record)
+    }))
+    .sort((a,b)=>
+      String(b.archivedAt)
+        .localeCompare(
+          String(a.archivedAt)
+        )||
+      String(a.region)
+        .localeCompare(
+          String(b.region)
+        )||
+      String(a.branch)
+        .localeCompare(
+          String(b.branch)
+        )
+    );
+
+  updateFilterOptions();
+  render();
+}
+
+function uniqueSorted(values){
+  return [
+    ...new Set(
+      values
+        .map(clean)
+        .filter(Boolean)
+    )
+  ].sort((a,b)=>
+    a.localeCompare(b)
+  );
+}
+
+function branchFilterValue(row){
+  return `${row.branchCode}|${row.branch}`;
+}
+
+function filterValueLabel(
+  type,
+  value
+){
+  if(type!=="branch"){
+    return value;
+  }
+
+  const [
+    code,
+    branch
+  ]=String(value).split("|");
+
+  return `${branch} (${code})`;
+}
+
+function updateOneFilter(
+  type,
+  values
+){
+  const state=filterState[type];
+  const priorValues=new Set(
+    state.values
+  );
+  const priorSelected=
+    new Set(state.selected);
+  const priorWasAll=
+    state.initialized&&
+    priorValues.size>0&&
+    priorSelected.size===
+      priorValues.size;
+
+  state.values=values;
+
+  if(!state.initialized){
+    state.selected=new Set(values);
+    state.initialized=true;
+    return;
+  }
+
+  state.selected=new Set(
+    values.filter(value=>
+      priorWasAll||
+      priorSelected.has(value)
+    )
+  );
+}
+
+function updateFilterOptions(){
+  const sourceRows=[
+    ...activeRows,
+    ...archiveRows
+  ];
+
+  updateOneFilter(
+    "region",
+    uniqueSorted(
+      sourceRows.map(row=>row.region)
+    )
+  );
+
+  updateOneFilter(
+    "subregion",
+    uniqueSorted(
+      sourceRows.map(row=>row.subregion)
+    )
+  );
+
+  updateOneFilter(
+    "branch",
+    uniqueSorted(
+      sourceRows.map(branchFilterValue)
+    )
+  );
+
+  renderFilter("region");
+  renderFilter("subregion");
+  renderFilter("branch");
+}
+
+function filterSummaryLabel(
+  type
+){
+  const state=filterState[type];
+  const singular={
+    region:"Region",
+    subregion:"Subregion",
+    branch:"Branch"
+  }[type];
+  const plural={
+    region:"Regions",
+    subregion:"Subregions",
+    branch:"Branches"
+  }[type];
+
+  if(
+    state.values.length===0||
+    state.selected.size===
+      state.values.length
+  ){
+    return `All ${plural}`;
+  }
+
+  if(state.selected.size===1){
+    const value=[
+      ...state.selected
+    ][0];
+
+    return filterValueLabel(
+      type,
+      value
+    );
+  }
+
+  return `${state.selected.size} ${plural}`;
+}
+
+function renderFilter(type){
+  const state=filterState[type];
+  const optionContainer=$(
+    `#${type}-filter-options`
+  );
+  const label=$(
+    `#${type}-filter-label`
+  );
+
+  label.textContent=
+    filterSummaryLabel(type);
+
+  const allChecked=
+    state.values.length>0&&
+    state.selected.size===
+      state.values.length;
+
+  optionContainer.innerHTML=[
+    `<label class="filter-option select-all">
+      <input
+        type="checkbox"
+        data-filter-all="${type}"
+        ${allChecked?"checked":""}
+      >
+      Select All
+    </label>`,
+    ...state.values.map(value=>`
+      <label class="filter-option">
+        <input
+          type="checkbox"
+          data-filter-type="${type}"
+          value="${escapeHtml(value)}"
+          ${
+            state.selected.has(value)
+              ?"checked"
+              :""
+          }
+        >
+        ${escapeHtml(
+          filterValueLabel(type,value)
+        )}
+      </label>
+    `)
+  ].join("");
+}
+
+function rowPassesFilters(row){
+  return (
+    filterState.region.selected.has(
+      row.region
+    )&&
+    filterState.subregion.selected.has(
+      row.subregion
+    )&&
+    filterState.branch.selected.has(
+      branchFilterValue(row)
+    )
+  );
+}
+
+function currentRows(){
+  const source=
+    selectedTab==="active"
+      ?activeRows
+      :archiveRows;
+
+  return source.filter(
+    rowPassesFilters
+  );
+}
+
+function memoIcon(){
+  return `<svg
+    viewBox="0 0 24 24"
+    aria-hidden="true"
+  >
+    <path d="M4 3h11l5 5v13H4V3zm2 2v14h12V9h-4V5H6zm2 7h8v2H8v-2zm0 4h8v2H8v-2zm0-8h4v2H8V8z"/>
+  </svg>`;
+}
+
+function memoCell(
+  record,
+  field,
+  fallback=""
+){
+  const saved=clean(
+    record[field]
+  );
+  const display=saved||fallback;
+  const empty=!display;
+
+  return `<div class="memo-cell">
+    <div class="memo-text ${empty?"empty":""}">
+      ${
+        empty
+          ?"Click the memo icon to add an update."
+          :escapeHtml(display)
+      }
+    </div>
+    <button
+      class="memo-btn"
+      type="button"
+      data-memo-record="${escapeHtml(record.recordKey)}"
+      data-memo-field="${escapeHtml(field)}"
+      title="Edit ${escapeHtml(field)}"
+    >
+      ${memoIcon()}
+    </button>
+  </div>`;
+}
+
+function optionHtml(
+  options,
+  selected
+){
+  return options.map(option=>
+    `<option
+      value="${escapeHtml(option)}"
+      ${
+        clean(option)===clean(selected)
+          ?"selected"
+          :""
+      }
+    >
+      ${
+        option
+          ?escapeHtml(option)
+          :"Select..."
+      }
+    </option>`
+  ).join("");
+}
+
+function dropdownCell(
+  record,
+  field,
+  options
+){
+  return `<select
+    class="row-select"
+    data-record-key="${escapeHtml(record.recordKey)}"
+    data-record-field="${escapeHtml(field)}"
+  >
+    ${optionHtml(
+      options,
+      record[field]
+    )}
+  </select>`;
+}
+
+function statusBadge(status){
+  const normalized=
+    upper(status)==="OOS"
+      ?"OOS"
+      :"ACTIVE";
+
+  return `<span class="status-badge ${normalized.toLowerCase()}">
+    ${normalized}
+  </span>`;
+}
+
+function ecdCell(value){
+  const date=parseDate(value);
+  const pastDue=
+    date&&
+    date<
+      new Date(
+        new Date().getFullYear(),
+        new Date().getMonth(),
+        new Date().getDate()
+      );
+
+  return `<span class="ecd-main ${pastDue?"ecd-past":""}">
+    ${date?escapeHtml(dateText(date)):"—"}
+  </span>`;
+}
+
+function renderRows(){
+  const rows=currentRows();
+  const body=$("#report-body");
+  const empty=$("#empty-state");
+
+  $("#table-summary").textContent=
+    `${rows.length.toLocaleString()} ${
+      selectedTab==="active"
+        ?"open VRO row"
+        :"archived VRO row"
+    }${rows.length===1?"":"s"}`;
+
+  if(!rows.length){
+    body.innerHTML="";
+    empty.classList.remove("hidden");
+    return;
+  }
+
+  empty.classList.add("hidden");
+
+  body.innerHTML=rows.map(record=>`
+    <tr>
+      <td>${escapeHtml(record.region)}</td>
+      <td>${escapeHtml(record.subregion)}</td>
+      <td>
+        <strong>${escapeHtml(record.branch)}</strong>
+        <div class="unit-sub">
+          ${escapeHtml(record.branchCode)}
+          ${
+            record.branchUseful!==null&&
+            record.branchUseful!==undefined
+              ?` · ${percentText(record.branchUseful)}`
+              :""
+          }
+        </div>
+      </td>
+      <td>
+        <div class="unit-main">
+          ${escapeHtml(record.unit||"—")}
+        </div>
+        <div class="unit-sub">
+          VRO ${escapeHtml(record.order)}
+          ${
+            record.vin
+              ?` · ${escapeHtml(record.vin)}`
+              :""
+          }
+        </div>
+      </td>
+      <td>${statusBadge(record.assetStatus)}</td>
+      <td>
+        ${memoCell(
+          record,
+          "actionNextSteps"
+        )}
+      </td>
+      <td>
+        ${memoCell(
+          record,
+          "problem",
+          record.problemSource
+        )}
+      </td>
+      <td>
+        ${escapeHtml(record.vendor||"—")}
+      </td>
+      <td>
+        ${dropdownCell(
+          record,
+          "estimateStatus",
+          ESTIMATE_OPTIONS
+        )}
+      </td>
+      <td>
+        ${dropdownCell(
+          record,
+          "partsStatus",
+          PARTS_OPTIONS
+        )}
+      </td>
+      <td>${ecdCell(record.ecd)}</td>
+      <td>
+        ${dropdownCell(
+          record,
+          "holdUpIssue",
+          HOLD_UP_OPTIONS
+        )}
+      </td>
+      <td>
+        ${memoCell(
+          record,
+          "notes"
+        )}
+        ${
+          selectedTab==="archive"&&
+          record.archivedAt
+            ?`<div class="unit-sub">
+                Returned above 90%:
+                ${escapeHtml(dateText(record.archivedAt))}
+                ${
+                  record.returnUseful!==null&&
+                  record.returnUseful!==undefined
+                    ?` · ${percentText(record.returnUseful)}`
+                    :""
+                }
+              </div>`
+            :""
+        }
+      </td>
+    </tr>
+  `).join("");
+}
+
+function render(){
+  $("#branch-count-pill").textContent=
+    `Branches ${
+      [...branchMetrics.values()]
+        .filter(branch=>
+          branch.useful!==null&&
+          branch.useful<0.90
+        ).length
+        .toLocaleString()
+    }`;
+
+  $("#active-count-pill").textContent=
+    `Active VROs ${activeRows.length.toLocaleString()}`;
+
+  $("#archive-count-pill").textContent=
+    `RTS >90% ${archiveRows.length.toLocaleString()}`;
+
+  renderRows();
+}
+
+async function saveRecordField(
+  recordKey,
+  field,
+  value
+){
+  const userEmail=
+    firebase.auth().currentUser
+      ?.email||
+    "";
+
+  await db.ref(
+    `${REPORT_ROOT}/${recordKey}`
+  ).update({
+    [field]:value,
+    lastEditedAt:
+      new Date().toISOString(),
+    lastEditedBy:userEmail
+  });
+}
+
+function findRecord(recordKey){
+  return (
+    activeRows.find(row=>
+      row.recordKey===recordKey
+    )||
+    archiveRows.find(row=>
+      row.recordKey===recordKey
+    )||
+    null
+  );
+}
+
+function openMemo(
+  recordKey,
+  field
+){
+  const record=findRecord(recordKey);
+
+  if(!record){
+    return;
+  }
+
+  const titleByField={
+    actionNextSteps:
+      "Action / Next Steps",
+    problem:"Problem",
+    notes:"Notes"
+  };
+
+  memoContext={
+    recordKey,
+    field
+  };
+
+  $("#memo-modal-title").textContent=
+    `Edit ${titleByField[field]||field}`;
+
+  $("#memo-record").textContent=
+    `${record.unit||"Unit"} · VRO ${record.order} · ${record.branch}`;
+
+  const saved=clean(record[field]);
+  const fallback=
+    field==="problem"
+      ?clean(record.problemSource)
+      :"";
+
+  $("#memo-textarea").value=
+    saved||fallback;
+
+  $("#memo-modal").classList.add(
+    "open"
+  );
+
+  setTimeout(
+    ()=>$("#memo-textarea").focus(),
+    0
+  );
+}
+
+function closeMemo(){
+  memoContext=null;
+  $("#memo-modal").classList.remove(
+    "open"
+  );
+  $("#memo-textarea").value="";
+}
+
+async function saveMemo(){
+  if(!memoContext){
+    return;
+  }
+
+  const button=$("#memo-save-btn");
+  button.disabled=true;
+
+  try{
+    await saveRecordField(
+      memoContext.recordKey,
+      memoContext.field,
+      $("#memo-textarea").value.trim()
+    );
+
+    closeMemo();
+  }catch(error){
+    console.error(
+      "Memo save failed",
+      error
+    );
+
+    showWarnings([
+      `Memo save failed: ${error?.message||String(error)}`
+    ]);
+  }finally{
+    button.disabled=false;
+  }
+}
+
+function startRecordsListener(){
+  if(recordsListener){
+    recordsListener.off();
+  }
+
+  recordsListener=db.ref(
+    REPORT_ROOT
+  );
+
+  recordsListener.on(
+    "value",
+    snapshot=>{
+      firebaseRecords=
+        snapshot.val()||{};
+
+      mergeRowsWithFirebase();
+    },
+    error=>{
+      showWarnings([
+        `Realtime reporting data could not load: ${error.message}`
+      ]);
+    }
+  );
+}
+
+async function loadReport(){
+  if(loading){
+    return;
+  }
+
+  loading=true;
+  $("#refresh-btn").disabled=true;
+  $("#export-btn").disabled=true;
+
+  try{
+    showWarnings([]);
+
+    setStatus(
+      "",
+      "Fetching live Garda workbook",
+      `Downloading ${WORKBOOK_PATH} from Firebase Storage...`
+    );
+
+    const buffer=
+      await fetchWorkbookBuffer();
+
+    setStatus(
+      "",
+      "Processing below-90% reporting",
+      "Identifying approved vended branches, open VROs, unit statuses, vendors, and ECDs..."
+    );
+
+    const parsed=parseWorkbook(buffer);
+    workbookRows=parsed.rows;
+
+    const snapshot=await db.ref(
+      REPORT_ROOT
+    ).once("value");
+
+    firebaseRecords=
+      snapshot.val()||{};
+
+    await synchronizeTrackingRecords(
+      workbookRows,
+      firebaseRecords
+    );
+
+    const refreshedSnapshot=
+      await db.ref(REPORT_ROOT)
+        .once("value");
+
+    firebaseRecords=
+      refreshedSnapshot.val()||{};
+
+    if(!recordsListener){
+      startRecordsListener();
+    }
+
+    mergeRowsWithFirebase();
+    showWarnings(parsed.warnings);
+
+    $("#updated-pill").textContent=
+      `Updated ${new Date().toLocaleTimeString(
+        [],
+        {
+          hour:"numeric",
+          minute:"2-digit"
+        }
+      )}`;
+
+    setStatus(
+      "ok",
+      "Garda Below 90% Reporting loaded",
+      `${workbookRows.length.toLocaleString()} open VRO row${workbookRows.length===1?"":"s"} across ${
+        [...branchMetrics.values()]
+          .filter(branch=>
+            branch.useful!==null&&
+            branch.useful<0.90
+          ).length
+      } vended branch${[
+        ...branchMetrics.values()
+      ].filter(branch=>
+        branch.useful!==null&&
+        branch.useful<0.90
+      ).length===1?"":"es"}.`
+    );
+
+    $("#export-btn").disabled=false;
+  }catch(error){
+    console.error(
+      "Garda Below 90% Reporting load failed",
+      error
+    );
+
+    setStatus(
+      "error",
+      "Reporting could not load",
+      error?.message||String(error)
+    );
+
+    showWarnings([
+      `Unable to load Garda Below 90% Reporting: ${error?.message||String(error)}`
+    ]);
+  }finally{
+    loading=false;
+    $("#refresh-btn").disabled=false;
+  }
+}
+
+function exportValue(record,field){
+  const value=clean(record[field]);
+
+  if(
+    field==="problem"&&
+    !value
+  ){
+    return clean(record.problemSource);
+  }
+
+  return value;
+}
+
+function exportRows(rows,isArchive=false){
+  return rows.map(record=>[
+    record.region||"",
+    record.subregion||"",
+    record.branch||"",
+    record.unit||"",
+    record.order||"",
+    record.assetStatus||"",
+    exportValue(
+      record,
+      "actionNextSteps"
+    ),
+    exportValue(
+      record,
+      "problem"
+    ),
+    record.vendor||"",
+    record.estimateStatus||"",
+    record.partsStatus||"",
+    parseDate(record.ecd)||"",
+    record.holdUpIssue||"",
+    exportValue(
+      record,
+      "notes"
+    ),
+    record.vin||"",
+    record.vroStatus||"",
+    record.repclass||"",
+    parseDate(record.opened)||"",
+    isArchive
+      ?parseDate(record.archivedAt)||""
+      :"",
+    isArchive
+      ?record.returnUseful??""
+      :""
+  ]);
+}
+
+function excelHeaders(isArchive=false){
+  const headers=[
+    "GARDA REGION",
+    "GARDA SUBREGION",
+    "BRANCH",
+    "UNIT #",
+    "VRO #",
+    "STATUS",
+    "ACTION/NEXT STEPS",
+    "PROBLEM",
+    "VENDOR",
+    "ESTIMATE STATUS",
+    "PARTS STATUS",
+    "ECD",
+    "HOLD-UP ISSUE",
+    "NOTES",
+    "VIN",
+    "VRO STATUS",
+    "REPCLASS",
+    "OPENED DATE"
+  ];
+
+  if(isArchive){
+    headers.push(
+      "RTS >90% DATE",
+      "RETURNED USEFULNESS %"
+    );
+  }
+
+  return headers;
+}
+
+function excelColumnWidths(isArchive=false){
+  const widths=[
+    16,18,25,16,19,12,42,38,26,
+    24,20,15,18,42,22,22,22,16
+  ];
+
+  if(isArchive){
+    widths.push(17,22);
+  }
+
+  return widths;
+}
+
+function styleExcelWorksheet(
+  worksheet,
+  rowCount,
+  columnCount
+){
+  worksheet.views=[
+    {
+      state:"frozen",
+      ySplit:1,
+      showGridLines:false
+    }
+  ];
+
+  worksheet.autoFilter={
+    from:{
+      row:1,
+      column:1
+    },
+    to:{
+      row:Math.max(1,rowCount+1),
+      column:columnCount
+    }
+  };
+
+  worksheet.getRow(1).height=30;
+
+  worksheet.getRow(1)
+    .eachCell(cell=>{
+      cell.font={
+        name:"Raleway",
+        size:10,
+        bold:true,
+        color:{
+          argb:"FFFFFFFF"
+        }
+      };
+      cell.fill={
+        type:"pattern",
+        pattern:"solid",
+        fgColor:{
+          argb:"FF0B1F3A"
+        }
+      };
+      cell.alignment={
+        vertical:"middle",
+        horizontal:"center",
+        wrapText:true
+      };
+      cell.border={
+        top:{
+          style:"thin",
+          color:{argb:"FF61758A"}
+        },
+        bottom:{
+          style:"thin",
+          color:{argb:"FF61758A"}
+        },
+        left:{
+          style:"thin",
+          color:{argb:"FF61758A"}
+        },
+        right:{
+          style:"thin",
+          color:{argb:"FF61758A"}
+        }
+      };
+    });
+
+  for(
+    let row=2;
+    row<=rowCount+1;
+    row++
+  ){
+    const excelRow=worksheet.getRow(row);
+    excelRow.height=45;
+
+    excelRow.eachCell(
+      {
+        includeEmpty:true
+      },
+      cell=>{
+        cell.font={
+          name:"Raleway",
+          size:9,
+          color:{
+            argb:"FF000000"
+          }
+        };
+        cell.fill={
+          type:"pattern",
+          pattern:"solid",
+          fgColor:{
+            argb:
+              row%2===0
+                ?"FFFFFFFF"
+                :"FFE5E5E5"
+          }
+        };
+        cell.alignment={
+          vertical:"top",
+          horizontal:"left",
+          wrapText:true
+        };
+        cell.border={
+          top:{
+            style:"thin",
+            color:{argb:"FFD0D5DA"}
+          },
+          bottom:{
+            style:"thin",
+            color:{argb:"FFD0D5DA"}
+          },
+          left:{
+            style:"thin",
+            color:{argb:"FFD0D5DA"}
+          },
+          right:{
+            style:"thin",
+            color:{argb:"FFD0D5DA"}
+          }
+        };
+      }
+    );
+  }
+
+  worksheet.getColumn(12)
+    .numFmt="mm/dd/yyyy";
+
+  worksheet.getColumn(18)
+    .numFmt="mm/dd/yyyy";
+
+  if(columnCount>=19){
+    worksheet.getColumn(19)
+      .numFmt="mm/dd/yyyy";
+  }
+
+  if(columnCount>=20){
+    worksheet.getColumn(20)
+      .numFmt="0.0%";
+  }
+}
+
+function addExcelReportTable(
+  workbook,
+  sheetName,
+  tableName,
+  rows,
+  isArchive=false
+){
+  const worksheet=
+    workbook.addWorksheet(
+      sheetName,
+      {
+        properties:{
+          defaultRowHeight:18
+        }
+      }
+    );
+
+  const headers=
+    excelHeaders(isArchive);
+  const widths=
+    excelColumnWidths(isArchive);
+
+  worksheet.columns=headers.map(
+    (header,index)=>({
+      key:`c${index+1}`,
+      width:widths[index]
+    })
+  );
+
+  const lastColumn=headers.length;
+  const tableRows=rows.length
+    ?rows
+    :[Array(lastColumn).fill("")];
+
+  /*
+    addTable creates both the header and the data rows. Writing the rows
+    separately before addTable would duplicate them in the workbook.
+  */
+  worksheet.addTable({
+    name:tableName,
+    ref:"A1",
+    headerRow:true,
+    totalsRow:false,
+    style:{
+      theme:"TableStyleMedium2",
+      showFirstColumn:false,
+      showLastColumn:false,
+      showRowStripes:true,
+      showColumnStripes:false
+    },
+    columns:headers.map(name=>({
+      name,
+      filterButton:true
+    })),
+    rows:tableRows
+  });
+
+  styleExcelWorksheet(
+    worksheet,
+    tableRows.length,
+    lastColumn
+  );
+
+  return worksheet;
+}
+
+async function exportReport(){
+  const button=$("#export-btn");
+  button.disabled=true;
+
+  try{
+    const workbook=
+      new ExcelJS.Workbook();
+
+    workbook.creator="OSC+";
+    workbook.company="Amerit";
+    workbook.created=new Date();
+    workbook.modified=new Date();
+
+    const filteredActive=
+      activeRows.filter(
+        rowPassesFilters
+      );
+
+    const filteredArchive=
+      archiveRows.filter(
+        rowPassesFilters
+      );
+
+    addExcelReportTable(
+      workbook,
+      "Under 90% Useful Branches",
+      "Under90UsefulBranches",
+      exportRows(
+        filteredActive,
+        false
+      ),
+      false
+    );
+
+    addExcelReportTable(
+      workbook,
+      "RTS >90% Archive",
+      "RTSAbove90Archive",
+      exportRows(
+        filteredArchive,
+        true
+      ),
+      true
+    );
+
+    const output=
+      await workbook.xlsx.writeBuffer();
+
+    const blob=new Blob(
+      [output],
+      {
+        type:
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      }
+    );
+
+    const url=
+      URL.createObjectURL(blob);
+    const anchor=
+      document.createElement("a");
+
+    anchor.href=url;
+    anchor.download=
+      `Garda_Below_90_Reporting_${localDateKey()}.xlsx`;
+
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+
+    setTimeout(
+      ()=>URL.revokeObjectURL(url),
+      1500
+    );
+  }catch(error){
+    console.error(
+      "VRO report export failed",
+      error
+    );
+
+    showWarnings([
+      `VRO report export failed: ${error?.message||String(error)}`
+    ]);
+  }finally{
+    button.disabled=false;
+  }
+}
+
+function selectAllFilters(){
+  Object.values(filterState)
+    .forEach(state=>{
+      state.selected=
+        new Set(state.values);
+    });
+
+  renderFilter("region");
+  renderFilter("subregion");
+  renderFilter("branch");
+  renderRows();
+}
+
+function initializeEvents(){
+  $("#refresh-btn").addEventListener(
+    "click",
+    loadReport
+  );
+
+  $("#export-btn").addEventListener(
+    "click",
+    exportReport
+  );
+
+  $("#clear-filters-btn")
+    .addEventListener(
+      "click",
+      selectAllFilters
+    );
+
+  $$(".report-tab").forEach(button=>{
+    button.addEventListener(
+      "click",
+      ()=>{
+        selectedTab=
+          button.dataset.tab;
+
+        $$(".report-tab").forEach(tab=>
+          tab.classList.toggle(
+            "active",
+            tab===button
+          )
+        );
+
+        renderRows();
+      }
+    );
+  });
+
+  document.addEventListener(
+    "change",
+    async event=>{
+      const filterType=
+        event.target.dataset
+          ?.filterType;
+      const filterAll=
+        event.target.dataset
+          ?.filterAll;
+
+      if(filterAll){
+        const state=
+          filterState[filterAll];
+
+        state.selected=
+          event.target.checked
+            ?new Set(state.values)
+            :new Set();
+
+        renderFilter(filterAll);
+        renderRows();
+        return;
+      }
+
+      if(filterType){
+        const state=
+          filterState[filterType];
+        const value=
+          event.target.value;
+
+        if(event.target.checked){
+          state.selected.add(value);
+        }else{
+          state.selected.delete(value);
+        }
+
+        renderFilter(filterType);
+        renderRows();
+        return;
+      }
+
+      const recordKey=
+        event.target.dataset
+          ?.recordKey;
+      const field=
+        event.target.dataset
+          ?.recordField;
+
+      if(recordKey&&field){
+        try{
+          await saveRecordField(
+            recordKey,
+            field,
+            event.target.value
+          );
+        }catch(error){
+          showWarnings([
+            `Dropdown selection could not save: ${error?.message||String(error)}`
+          ]);
+        }
+      }
+    }
+  );
+
+  document.addEventListener(
+    "click",
+    event=>{
+      const memoButton=
+        event.target.closest(
+          "[data-memo-record]"
+        );
+
+      if(memoButton){
+        openMemo(
+          memoButton.dataset.memoRecord,
+          memoButton.dataset.memoField
+        );
+      }
+    }
+  );
+
+  $("#memo-close-btn").addEventListener(
+    "click",
+    closeMemo
+  );
+
+  $("#memo-cancel-btn").addEventListener(
+    "click",
+    closeMemo
+  );
+
+  $("#memo-save-btn").addEventListener(
+    "click",
+    saveMemo
+  );
+
+  $("#memo-modal").addEventListener(
+    "click",
+    event=>{
+      if(event.target===$("#memo-modal")){
+        closeMemo();
+      }
+    }
+  );
+
+  document.addEventListener(
+    "keydown",
+    event=>{
+      if(
+        event.key==="Escape"&&
+        $("#memo-modal").classList.contains(
+          "open"
+        )
+      ){
+        closeMemo();
+      }
+    }
+  );
+
+  $("#login-form").addEventListener(
+    "submit",
+    async event=>{
+      event.preventDefault();
+
+      const errorBox=
+        $("#login-error");
+      errorBox.style.display="none";
+
+      try{
+        await firebase.auth()
+          .signInWithEmailAndPassword(
+            MASTER_EMAIL,
+            $("#login-password").value
+          );
+      }catch(error){
+        console.error(error);
+        errorBox.textContent=
+          error?.message||
+          "Incorrect password or Firebase authentication failed.";
+        errorBox.style.display="block";
+      }
+    }
+  );
+}
+
+function initialize(){
+  if(!firebase.apps.length){
+    firebase.initializeApp(
+      FIREBASE_CONFIG
+    );
+  }
+
+  db=firebase.database();
+  initializeEvents();
+
+  firebase.auth()
+    .onAuthStateChanged(user=>{
+      if(user){
+        $("#login-overlay").style.display=
+          "none";
+
+        startRecordsListener();
+        loadReport();
+      }else{
+        $("#login-overlay").style.display=
+          "flex";
+
+        setStatus(
+          "",
+          "Waiting for Firebase authentication",
+          "Enter the OSC+ password to load the live workbook."
+        );
+      }
+    });
+}
+
+initialize();
+
+setInterval(()=>{
+  if(
+    firebase.auth().currentUser&&
+    !loading
+  ){
+    loadReport();
+  }
+},15*60*1000);
+</script>
+</body>
+</html>
