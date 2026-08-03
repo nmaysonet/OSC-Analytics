@@ -561,6 +561,10 @@
       accent-color:var(--blue);
     }
 
+    .filter-option input:indeterminate {
+      accent-color:var(--blue);
+    }
+
     .clear-filters {
       min-height:39px;
       padding:0 13px;
@@ -2872,29 +2876,71 @@ function filterSummaryLabel(
   return `${state.selected.size} ${plural}`;
 }
 
+function syncFilterDisplay(type){
+  const state=filterState[type];
+  const label=$(
+    `#${type}-filter-label`
+  );
+  const optionContainer=$(
+    `#${type}-filter-options`
+  );
+
+  if(label){
+    label.textContent=
+      filterSummaryLabel(type);
+  }
+
+  if(!optionContainer){
+    return;
+  }
+
+  const selectAllInput=
+    optionContainer.querySelector(
+      `[data-filter-all="${type}"]`
+    );
+
+  const selectedCount=
+    state.selected.size;
+  const totalCount=
+    state.values.length;
+
+  if(selectAllInput){
+    selectAllInput.checked=
+      totalCount>0&&
+      selectedCount===totalCount;
+
+    selectAllInput.indeterminate=
+      selectedCount>0&&
+      selectedCount<totalCount;
+  }
+
+  optionContainer
+    .querySelectorAll(
+      `[data-filter-type="${type}"]`
+    )
+    .forEach(input=>{
+      input.checked=
+        state.selected.has(
+          input.value
+        );
+    });
+}
+
 function renderFilter(type){
   const state=filterState[type];
   const optionContainer=$(
     `#${type}-filter-options`
   );
-  const label=$(
-    `#${type}-filter-label`
-  );
 
-  label.textContent=
-    filterSummaryLabel(type);
-
-  const allChecked=
-    state.values.length>0&&
-    state.selected.size===
-      state.values.length;
+  if(!optionContainer){
+    return;
+  }
 
   optionContainer.innerHTML=[
     `<label class="filter-option select-all">
       <input
         type="checkbox"
         data-filter-all="${type}"
-        ${allChecked?"checked":""}
       >
       Select All
     </label>`,
@@ -2904,11 +2950,6 @@ function renderFilter(type){
           type="checkbox"
           data-filter-type="${type}"
           value="${escapeHtml(value)}"
-          ${
-            state.selected.has(value)
-              ?"checked"
-              :""
-          }
         >
         ${escapeHtml(
           filterValueLabel(type,value)
@@ -2916,8 +2957,17 @@ function renderFilter(type){
       </label>
     `)
   ].join("");
-}
 
+  /*
+    Keep clicks inside the checkbox list from affecting the parent
+    <details> element or closing/reopening the filter unexpectedly.
+  */
+  optionContainer.onclick=event=>{
+    event.stopPropagation();
+  };
+
+  syncFilterDisplay(type);
+}
 function rowPassesFilters(row){
   return (
     filterState.region.selected.has(
@@ -3795,15 +3845,14 @@ async function exportReport(){
 }
 
 function selectAllFilters(){
-  Object.values(filterState)
-    .forEach(state=>{
+  Object.entries(filterState)
+    .forEach(([type,state])=>{
       state.selected=
         new Set(state.values);
+
+      syncFilterDisplay(type);
     });
 
-  renderFilter("region");
-  renderFilter("subregion");
-  renderFilter("branch");
   renderRows();
 }
 
@@ -3862,7 +3911,9 @@ function initializeEvents(){
             ?new Set(state.values)
             :new Set();
 
-        renderFilter(filterAll);
+        syncFilterDisplay(
+          filterAll
+        );
         renderRows();
         return;
       }
@@ -3879,7 +3930,9 @@ function initializeEvents(){
           state.selected.delete(value);
         }
 
-        renderFilter(filterType);
+        syncFilterDisplay(
+          filterType
+        );
         renderRows();
         return;
       }
