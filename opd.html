@@ -1136,7 +1136,7 @@
     <a class="nav-item" href="index.html#config">Customer Configuration</a>
     <a class="nav-item active" href="opd.html">Vended Operational Performance</a>
     <a class="nav-item" href="vendor_cov.html">Vendor Coverage</a>
-    <a class="nav-item" href="gu90.html">Garda Below 90% Reporting</a>
+    <a class="nav-item" href="garda_below90_reporting.html">Garda Below 90% Reporting</a>
 
     <div class="sidebar-truck">
       <svg width="150" height="76" viewBox="0 0 120 60" xmlns="http://www.w3.org/2000/svg">
@@ -1199,7 +1199,7 @@
               </div>
             </div>
             <div class="opd-status-meta">
-              <span class="opd-pill" id="branch-pill">67 approved branches</span>
+              <span class="opd-pill" id="branch-pill">66 approved branches</span>
               <span class="opd-pill" id="order-pill">Open ROs —</span>
             </div>
           </div>
@@ -1251,7 +1251,7 @@
             </section>
           </div>
 
-          <div class="opd-footer" id="methodology-footer"><strong>Workbook-derived:</strong> A single open order may count separately under PM, DOT, A/C, and LTS. ANNUAL INSPECTION routes to DOT and GARDA AC CHECK routes to A/C whenever those phrases appear anywhere inside the combined VRO task text, regardless of the order’s REPCLASS. PM remains driven by a PM REPCLASS and counts approved PM task names or other remaining PM-repclass task content after the separate DOT, A/C, LTS, and coolant phrases are removed. Repeated task phrases on one order are deduplicated by unique Order + program. All PM-related compliance calculations use Garda's formula: 1 - (distinct overdue VINs / total active VINs). # Overdue Not Scheduled is the hard count of unique overdue VINs that do not yet have every required PM or inspection fully scheduled. That includes VINs with no matching VRO, VROs still in Unassigned ROs, missing ECDs, or only part of the overdue work scheduled. Scheduling Gap is that same count divided by total active VINs. Coming-due VINs stay in the detailed scheduling report but do not reduce compliance or Scheduling Gap until they become overdue. Duplicate VIN interval rows use OR logic: if mileage or time/frequency reaches the threshold, the VIN is controlled by that requirement. OOS movement is calculated from the unique Unit # values marked OOS on the OOS GARDA tab for the approved 67 branches. The below-threshold section now includes only sites below 90% usefulness. Vehicles Returned to Service and New Units OOS are calculated separately for all sites and for the OOS units at those below-90% sites. The Sites <90% section includes a branch selector that displays the same Prior Day, Current Day, Delta, movement, and usefulness metrics for an individual current below-90% branch. Current Day compares today's OOS unit list to the prior snapshot; Prior Day compares the prior snapshot to the snapshot before it. Delta is Current Day minus Prior Day. Maintenance VRO matching is performed by normalized VIN across all orders. The PM, DOT, AC, and LTS source tabs establish the approved 67-site VIN population, so a VRO is not discarded when its customer branch code is different, malformed, or blank. PM is recognized from a PM REPCLASS or approved PM task text; ANNUAL INSPECTION, GARDA AC CHECK, and GARDA LTS SYSTEM CHECK are recognized anywhere in combined task text. Completed or Final Charges Submitted work counts only when its completion date is later than the requirement's LASTDONE date on the source tab. The report export includes separate PM Not Scheduled, DOT Not Scheduled, LTS PM Not Scheduled, and AC Not Scheduled tabs.</div>
+          <div class="opd-footer" id="methodology-footer"><strong>Workbook-derived:</strong> A single open order may count separately under PM, DOT, A/C, and LTS. ANNUAL INSPECTION routes to DOT and GARDA AC CHECK routes to A/C whenever those phrases appear anywhere inside the combined VRO task text, regardless of the order’s REPCLASS. PM remains driven by a PM REPCLASS and counts approved PM task names or other remaining PM-repclass task content after the separate DOT, A/C, LTS, and coolant phrases are removed. Repeated task phrases on one order are deduplicated by unique Order + program. All PM-related compliance calculations use Garda's formula: 1 - (distinct overdue VINs / total active VINs). # Overdue Not Scheduled is the hard count of unique overdue VINs that do not yet have every required PM or inspection fully scheduled. That includes VINs with no matching VRO, VROs still in Unassigned ROs, missing ECDs, or only part of the overdue work scheduled. Scheduling Gap is that same count divided by total active VINs. Coming-due VINs stay in the detailed scheduling report but do not reduce compliance or Scheduling Gap until they become overdue. Duplicate VIN interval rows use OR logic: if mileage or time/frequency reaches the threshold, the VIN is controlled by that requirement. OOS movement is calculated from the unique Unit # values marked OOS on the OOS GARDA tab for the approved vended branches. The below-threshold section now includes only sites below 90% usefulness. Vehicles Returned to Service and New Units OOS are calculated separately for all sites and for the OOS units at those below-90% sites. The Sites <90% section includes a branch selector that displays the same Prior Day, Current Day, Delta, movement, and usefulness metrics for an individual current below-90% branch. Current Day compares today's OOS unit list to the prior snapshot; Prior Day compares the prior snapshot to the snapshot before it. Delta is Current Day minus Prior Day. Maintenance VRO matching is performed by normalized VIN across all orders. The PM, DOT, AC, and LTS source tabs establish the approved vended-site VIN population, so a VRO is not discarded when its customer branch code is different, malformed, or blank. PM is recognized from a PM REPCLASS or approved PM task text; ANNUAL INSPECTION, GARDA AC CHECK, and GARDA LTS SYSTEM CHECK are recognized anywhere in combined task text. Completed or Final Charges Submitted work counts only when its completion date is later than the requirement's LASTDONE date on the source tab. The report export includes separate PM Not Scheduled, DOT Not Scheduled, LTS PM Not Scheduled, and AC Not Scheduled tabs.</div>
         </div>
       </div>
     </section>
@@ -1277,7 +1277,7 @@ const MAINTENANCE_STATUSES=new Set([
 ]);
 const DEFAULT_VENDOR_PATTERNS=["DEFAULT BLANKET VENDOR","SYSTEM USE ONLY","DO NOT BILL","NO VENDOR"];
 const APPROVED_BRANCHES=[
-["Birmingham, AL","260-22"],["Charleston, SC","250-92"],["Hampton-Chespeake, VA","140-31"],["Knoxville, TN","270-10"],["Memphis, TN","270-32"],["Myrtle Beach, SC","250-97"],["Nashville, TN","270-08"],["Richmond, VA","140-89"],["Roanoke, VA","140-24"],["Kansas City, KS","130-63"],["Lexington, KY","270-65"],["Salina, KS","130-62"],["St. Louis, MO","130-69"],["Wichita, KS","130-65"],["Cincinnati, OH","190-67"],["Columbus, OH","190-64"],["Dayton, OH","190-65"],["Grand Rapids, MI","190-60"],["Bloomington, IL","190-24"],["Chippewa Falls, WI","190-53"],["Davenport, IA","190-45"],["Duluth, MN","190-58"],["Green Bay, WI","190-55"],["Madison, WI","190-56"],["Dover, DE","140-92"],["Johnstown, PA","140-82"],["Wilkes Barre, PA","140-95"],["Burlington, VT","144-21"],["Rochester, NY","280-55"],["Schenectady, NY","140-27"],["West Hempstead, NY","140-28"],["Austin, TX","130-75"],["Corpus Christi, TX","130-72"],["El Paso, TX","130-20"],["Laredo, TX","130-76"],["Little Rock, AR","260-07"],["Lubbock, TX","130-11"],["McAllen, TX","130-74"],["Shreveport, LA","260-03"],["Jackson, MS","260-23"],["Jacksonville, FL","260-19"],["Lafayette, LA","260-01"],["Mobile, AL","260-31"],["New Orleans, LA","260-02"],["Red Bluff, CA","120-15"],["Sparks, NV","120-61"],["Bend, OR","230-60"],["Boise, ID","230-39"],["Helena, MT","230-87"],["Lewiston, ID","230-80"],["Medford, OR","230-59"],["Missoula, MT","230-91"],["Mt. Vernon, WA","230-53"],["Renton, WA","230-51"],["Roseburg, OR","230-58"],["Spokane, WA","230-50"],["Tacoma, WA","230-52"],["Wenatchee, WA","230-49"],["Yakima, WA","230-47"],["Santa Maria, CA","120-23"],["Albuquerque, NM","130-88"],["Casper, WY","230-95"],["Cheyenne, WY","230-96"],["Colorado Springs, CO","230-16"],["Flagstaff, AZ","120-27"],["Grand Junction, CO","230-34"],["Tucson, AZ","120-82"]
+["Birmingham, AL","260-22"],["Charleston, SC","250-92"],["Hampton-Chespeake, VA","140-31"],["Knoxville, TN","270-10"],["Memphis, TN","270-32"],["Myrtle Beach, SC","250-97"],["Nashville, TN","270-08"],["Richmond, VA","140-89"],["Roanoke, VA","140-24"],["Kansas City, KS","130-63"],["Lexington, KY","270-65"],["Salina, KS","130-62"],["Wichita, KS","130-65"],["Cincinnati, OH","190-67"],["Columbus, OH","190-64"],["Dayton, OH","190-65"],["Grand Rapids, MI","190-60"],["Bloomington, IL","190-24"],["Chippewa Falls, WI","190-53"],["Davenport, IA","190-45"],["Duluth, MN","190-58"],["Green Bay, WI","190-55"],["Madison, WI","190-56"],["Dover, DE","140-92"],["Johnstown, PA","140-82"],["Wilkes Barre, PA","140-95"],["Burlington, VT","144-21"],["Rochester, NY","280-55"],["Schenectady, NY","140-27"],["West Hempstead, NY","140-28"],["Austin, TX","130-75"],["Corpus Christi, TX","130-72"],["El Paso, TX","130-20"],["Laredo, TX","130-76"],["Little Rock, AR","260-07"],["Lubbock, TX","130-11"],["McAllen, TX","130-74"],["Shreveport, LA","260-03"],["Jackson, MS","260-23"],["Jacksonville, FL","260-19"],["Lafayette, LA","260-01"],["Mobile, AL","260-31"],["New Orleans, LA","260-02"],["Red Bluff, CA","120-15"],["Sparks, NV","120-61"],["Bend, OR","230-60"],["Boise, ID","230-39"],["Helena, MT","230-87"],["Lewiston, ID","230-80"],["Medford, OR","230-59"],["Missoula, MT","230-91"],["Mt. Vernon, WA","230-53"],["Renton, WA","230-51"],["Roseburg, OR","230-58"],["Spokane, WA","230-50"],["Tacoma, WA","230-52"],["Wenatchee, WA","230-49"],["Yakima, WA","230-47"],["Santa Maria, CA","120-23"],["Albuquerque, NM","130-88"],["Casper, WY","230-95"],["Cheyenne, WY","230-96"],["Colorado Springs, CO","230-16"],["Flagstaff, AZ","120-27"],["Grand Junction, CO","230-34"],["Tucson, AZ","120-82"]
 ];
 const BRANCH_BY_CODE=new Map(APPROVED_BRANCHES.map(([name,code])=>[code.replace(/\D/g,""),{name,code}]));
 const APPROVED_CODES=new Set(BRANCH_BY_CODE.keys());
@@ -2900,7 +2900,7 @@ function parseOosGarda(aoa,warnings,sheetName){
 
   if(!oosUnits.size){
     warnings.push(
-      `${sheetName}: no OOS units were matched to the approved 67 Garda branches.`
+      `${sheetName}: no OOS units were matched to the approved Garda vended branches.`
     );
   }
 
@@ -3807,6 +3807,23 @@ function parseWorkbook(buffer){
       ])
     );
 
+  /*
+    OPD and Garda Below 90% Reporting must use the same OOS population.
+    The below-90 branch set comes from Useful %, while the displayed OOS
+    count comes from unique units marked OOS on OOS GARDA.
+  */
+  usefulCurrent.underOos=
+    usefulCurrent.underOosUnitIds.length;
+
+  Object.entries(
+    usefulCurrent.branchMetrics||{}
+  ).forEach(([code,metric])=>{
+    metric.oosUnits=
+      usefulCurrent
+        .oosUnitIdsByBranch?.[code]
+        ?.length||0;
+  });
+
   const flash=parseGardaFlash(
     gardaFlash.aoa,
     warnings
@@ -4524,8 +4541,13 @@ function renderGardaAll(){
   renderVendedRepair();renderVrEcd();renderMaintenance();renderVendor();renderErs();
   const warnings=[...(dashboardData.warnings||[])];
   showWarning(warnings);
-  $("#branch-pill").textContent=`${dashboardData.vendedRepair.current.branches}/67 branches matched`;
-  $("#branch-pill").className=dashboardData.vendedRepair.current.branches===67?"pill good":"pill warn";
+  $("#branch-pill").textContent=
+    `${dashboardData.vendedRepair.current.branches}/${APPROVED_CODES.size} branches matched`;
+
+  $("#branch-pill").className=
+    dashboardData.vendedRepair.current.branches===APPROVED_CODES.size
+      ?"pill good"
+      :"pill warn";
 }
 
 function excelValue(value,type){if(isBlank(value))return null;if(type==="time")return Number(value)/1440;return Number(value);}
