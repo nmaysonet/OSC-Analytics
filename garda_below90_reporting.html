@@ -3986,27 +3986,6 @@ async function exportReport(){
         rowPassesFilters
       );
 
-    const missingRequiredVendors=
-      filteredActive.filter(record=>
-        vendorRequiresName(record)&&
-        !clean(record.vendorName)
-      );
-
-    if(missingRequiredVendors.length){
-      const units=missingRequiredVendors
-        .map(record=>record.unit||"Unknown Unit")
-        .slice(0,12)
-        .join(", ");
-      const additional=
-        missingRequiredVendors.length>12
-          ?` and ${missingRequiredVendors.length-12} more`
-          :"";
-
-      throw new Error(
-        `Vendor Name is required for CREDIT CARD unit(s): ${units}${additional}. Use the memo icon in the Vendor column before exporting.`
-      );
-    }
-
     addExcelReportTable(
       workbook,
       "Under 90% Useful Branches",
