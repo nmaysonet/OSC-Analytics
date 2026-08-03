@@ -626,6 +626,7 @@
 
     thead th {
       position:sticky;
+      text-align:left!important;
       top:0;
       z-index:12;
       min-height:38px;
@@ -644,6 +645,7 @@
 
     tbody td {
       min-height:54px;
+      text-align:left!important;
       padding:8px;
       border-right:1px solid #d4d9de;
       border-bottom:1px solid #d4d9de;
@@ -713,21 +715,47 @@
 
     .unit-main {
       color:#23364b;
+      text-align:left!important;
       font-size:11px;
       font-weight:900;
     }
 
     .unit-sub {
       margin-top:3px;
+      text-align:left!important;
       color:#667589;
       font-size:8px;
       font-weight:700;
     }
 
+    .asset-detail {
+      margin-top:5px;
+      color:#38495d;
+      font-size:9px;
+      font-weight:700;
+      line-height:1.4;
+      text-align:left!important;
+      white-space:pre-wrap;
+    }
+
+    .asset-detail strong {
+      color:#172b43;
+      font-weight:900;
+    }
+
+    .cell-lines {
+      color:#253548;
+      white-space:pre-wrap;
+      overflow-wrap:anywhere;
+      text-align:left!important;
+      line-height:1.45;
+    }
+
     .status-badge {
       display:inline-flex;
       align-items:center;
-      justify-content:center;
+      justify-content:flex-start;
+      text-align:left!important;
       min-width:59px;
       min-height:23px;
       padding:0 8px;
@@ -750,6 +778,7 @@
 
     .memo-cell {
       display:grid;
+      text-align:left!important;
       grid-template-columns:minmax(0,1fr) 29px;
       align-items:start;
       gap:7px;
@@ -758,6 +787,7 @@
 
     .memo-text {
       color:#2a3440;
+      text-align:left!important;
       white-space:pre-wrap;
       overflow-wrap:anywhere;
     }
@@ -793,6 +823,7 @@
 
     .row-select {
       width:100%;
+      text-align:left!important;
       min-height:31px;
       padding:4px 25px 4px 7px;
       border:1px solid #aeb8c2;
@@ -809,8 +840,29 @@
       box-shadow:0 0 0 2px rgba(31,78,120,.12);
     }
 
+    .temporary-status-select {
+      width:100%;
+      min-width:68px;
+      min-height:31px;
+      padding:4px 22px 4px 7px;
+      border:1px solid #e1a6a1;
+      border-radius:4px;
+      background:var(--red-bg);
+      color:var(--red);
+      text-align:left!important;
+      font-size:9px;
+      font-weight:900;
+    }
+
+    .temporary-status-select:focus {
+      border-color:var(--red);
+      outline:none;
+      box-shadow:0 0 0 2px rgba(180,35,24,.12);
+    }
+
     .ecd-main {
       color:#26384b;
+      text-align:left!important;
       font-size:10px;
       font-weight:900;
     }
@@ -979,21 +1031,11 @@
       </div>
     </div>
 
-    <a class="nav-item" href="index.html#report">
-      OSC+ Analytics
-    </a>
-    <a class="nav-item" href="index.html#config">
-      Customer Configuration
-    </a>
-    <a class="nav-item" href="opd.html">
-      Vended Operational Performance
-    </a>
-    <a
-      class="nav-item active"
-      href="garda_below90_reporting.html"
-    >
-      Garda Below 90% Reporting
-    </a>
+    <a class="nav-item" href="index.html#report">OSC+ Analytics</a>
+    <a class="nav-item" href="index.html#config">Customer Configuration</a>
+    <a class="nav-item" href="opd.html">Vended Operational Performance</a>
+    <a class="nav-item" href="vendor_cov.html">Vendor Coverage</a>
+    <a class="nav-item active" href="garda_below90_reporting.html">Garda Below 90% Reporting</a>
 
     <div class="sidebar-truck">
       <svg
@@ -1129,7 +1171,7 @@
                 class="metric-pill"
                 id="active-count-pill"
               >
-                Active VROs —
+                OOS Units —
               </span>
               <span
                 class="metric-pill"
@@ -1223,9 +1265,9 @@
               font-weight:700;
             "
           >
-            Firebase history is keyed to the VRO number. When the same
-            open VRO returns to below-90% reporting, its saved notes and
-            dropdown selections return with it.
+            Firebase history is displayed at one row per OOS unit.
+            VRO details remain internal so saved notes and dropdown selections
+            can return when the same open work reappears.
           </div>
 
           <div class="table-wrap">
@@ -1382,6 +1424,7 @@ let selectedTab="active";
 let recordsListener=null;
 let memoContext=null;
 let loading=false;
+const temporaryActiveKeys=new Set();
 
 const filterState={
   region:{
@@ -2159,6 +2202,198 @@ function parseOpenVros(
     );
 }
 
+
+function uniqueValues(values){
+  return [
+    ...new Set(
+      (values||[])
+        .map(clean)
+        .filter(Boolean)
+    )
+  ];
+}
+
+function unitIdentityForRecord(record){
+  return (
+    normalizedUnit(record?.unit)||
+    upper(record?.vin)||
+    `VRO_${clean(record?.order)}`
+  );
+}
+
+function unitRecordKey(record){
+  return safeFirebaseKey(
+    `UNIT_${record.branchCode}_${unitIdentityForRecord(record)}`
+  );
+}
+
+function earliestDateText(values){
+  const dates=(values||[])
+    .map(parseDate)
+    .filter(Boolean)
+    .sort((a,b)=>a-b);
+
+  return dates.length
+    ?dateText(dates[0])
+    :"";
+}
+
+function startOfToday(){
+  const now=new Date();
+
+  return new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate()
+  );
+}
+
+function latestFutureDateText(values){
+  const today=startOfToday();
+
+  const dates=(values||[])
+    .map(parseDate)
+    .filter(Boolean)
+    .filter(date=>date>today)
+    .sort((a,b)=>b-a);
+
+  return dates.length
+    ?dateText(dates[0])
+    :"";
+}
+
+function groupOpenVrosByUnit(orderRows){
+  const units=new Map();
+
+  (orderRows||[]).forEach(orderRow=>{
+    const identity=unitIdentityForRecord(orderRow);
+    const mapKey=`${orderRow.branchCode}|${identity}`;
+
+    if(!units.has(mapKey)){
+      units.set(mapKey,{
+        recordKey:unitRecordKey(orderRow),
+        recordType:"unit",
+        unitIdentity:identity,
+        unit:orderRow.unit||"",
+        region:orderRow.region||"",
+        subregion:orderRow.subregion||"",
+        branch:orderRow.branch||"",
+        branchCode:orderRow.branchCode||"",
+        branchUseful:orderRow.branchUseful??null,
+        assetStatus:orderRow.assetStatus||"ACTIVE",
+        vros:[]
+      });
+    }
+
+    const unitRecord=units.get(mapKey);
+    unitRecord.vros.push({
+      order:clean(orderRow.order),
+      vin:clean(orderRow.vin),
+      vroStatus:clean(orderRow.vroStatus),
+      repclass:clean(orderRow.repclass),
+      problem:clean(orderRow.problemSource),
+      vendor:clean(orderRow.vendor),
+      ecd:dateText(orderRow.ecd),
+      opened:dateText(orderRow.opened)
+    });
+
+    if(upper(orderRow.assetStatus)==="OOS"){
+      unitRecord.assetStatus="OOS";
+    }
+  });
+
+  return [...units.values()]
+    .map(unitRecord=>{
+      unitRecord.vros.sort((a,b)=>String(a.order).localeCompare(String(b.order)));
+
+      const orders=uniqueValues(unitRecord.vros.map(vro=>vro.order));
+      const vins=uniqueValues(unitRecord.vros.map(vro=>vro.vin));
+      const statuses=uniqueValues(unitRecord.vros.map(vro=>vro.vroStatus));
+      const repclasses=uniqueValues(unitRecord.vros.map(vro=>vro.repclass));
+      const vendors=uniqueValues(unitRecord.vros.map(vro=>vro.vendor));
+
+      return {
+        ...unitRecord,
+        orders,
+        order:orders.join(" | "),
+        vins,
+        vin:vins.join(" | "),
+        vroStatuses:statuses,
+        vroStatus:statuses.join(" | "),
+        repclasses,
+        repclass:repclasses.join(" | "),
+        problemSource:unitRecord.vros.map(vro=>vro.problem).filter(Boolean).join("\n"),
+        vendor:vendors.join("\n"),
+        ecds:uniqueValues(unitRecord.vros.map(vro=>vro.ecd)),
+        ecd:latestFutureDateText(unitRecord.vros.map(vro=>vro.ecd)),
+        openedDates:uniqueValues(unitRecord.vros.map(vro=>vro.opened)),
+        opened:earliestDateText(unitRecord.vros.map(vro=>vro.opened))
+      };
+    })
+    .filter(unitRecord=>upper(unitRecord.assetStatus)==="OOS")
+    .sort((a,b)=>
+      String(a.region).localeCompare(String(b.region))||
+      String(a.subregion).localeCompare(String(b.subregion))||
+      String(a.branch).localeCompare(String(b.branch))||
+      String(a.unitIdentity).localeCompare(String(b.unitIdentity))
+    );
+}
+function recordOrders(record){
+  if(Array.isArray(record?.orders)){
+    return uniqueValues(record.orders);
+  }
+
+  if(record?.order){
+    return uniqueValues(
+      String(record.order)
+        .split(/\s*\|\s*/)
+    );
+  }
+
+  return [];
+}
+
+function recordsShareOpenOrder(left,right){
+  const leftOrders=new Set(
+    recordOrders(left)
+  );
+
+  return recordOrders(right)
+    .some(order=>
+      leftOrders.has(order)
+    );
+}
+
+function mergeEditableRecordValues(records){
+  const usable=(records||[])
+    .filter(Boolean);
+
+  function mergedText(field){
+    return uniqueValues(
+      usable.map(record=>record[field])
+    ).join("\n\n");
+  }
+
+  function firstSelection(field){
+    return usable
+      .map(record=>clean(record[field]))
+      .find(Boolean)||"";
+  }
+
+  return {
+    actionNextSteps:
+      mergedText("actionNextSteps"),
+    problem:mergedText("problem"),
+    notes:mergedText("notes"),
+    estimateStatus:
+      firstSelection("estimateStatus"),
+    partsStatus:
+      firstSelection("partsStatus"),
+    holdUpIssue:
+      firstSelection("holdUpIssue")
+  };
+}
+
 function parseWorkbook(buffer){
   const warnings=[];
   const workbook=XLSX.read(
@@ -2190,11 +2425,15 @@ function parseWorkbook(buffer){
     oos.aoa
   );
 
-  const rows=parseOpenVros(
+  const orderRows=parseOpenVros(
     vro.aoa,
     branchMetrics,
     oosByUnit,
     warnings
+  );
+
+  const rows=groupOpenVrosByUnit(
+    orderRows
   );
 
   reportDateKey=localDateKey();
@@ -2232,8 +2471,11 @@ function recordEditableValues(record){
 function comparableRecord(record){
   return JSON.stringify({
     state:record.state||"",
-    order:record.order||"",
-    vin:record.vin||"",
+    recordType:record.recordType||"",
+    orders:recordOrders(record),
+    vins:Array.isArray(record.vins)
+      ?record.vins
+      :uniqueValues([record.vin]),
     unit:record.unit||"",
     region:record.region||"",
     subregion:record.subregion||"",
@@ -2247,14 +2489,17 @@ function comparableRecord(record){
     problemSource:
       record.problemSource||"",
     vendor:record.vendor||"",
-    ecd:dateText(record.ecd),
-    opened:dateText(record.opened),
+    ecdDisplay:
+      record.ecdDisplay||
+      dateText(record.ecd),
+    openedDisplay:
+      record.openedDisplay||
+      dateText(record.opened),
     archivedAt:record.archivedAt||"",
     returnUseful:
       record.returnUseful??null
   });
 }
-
 async function synchronizeTrackingRecords(
   parsedRows,
   existingRecords
@@ -2264,41 +2509,96 @@ async function synchronizeTrackingRecords(
   const activeKeys=new Set(
     parsedRows.map(row=>row.recordKey)
   );
+  const existingEntries=
+    Object.entries(existingRecords||{});
 
   parsedRows.forEach(row=>{
-    const existing=
+    const directExisting=
       existingRecords[
         row.recordKey
-      ]||{};
+      ]||null;
+
+    const matchingLegacy=existingEntries
+      .map(([,record])=>record)
+      .filter(record=>
+        record&&
+        record.recordType!=="unit"&&
+        recordsShareOpenOrder(
+          record,
+          row
+        )
+      );
+
+    const returningUnit=
+      directExisting&&
+      directExisting.state&&
+      directExisting.state!=="active";
+
+    const preserveDirect=
+      directExisting&&
+      (
+        !returningUnit||
+        recordsShareOpenOrder(
+          directExisting,
+          row
+        )
+      );
+
+    const editableSources=preserveDirect
+      ?[directExisting]
+      :matchingLegacy;
+
     const editable=
-      recordEditableValues(existing);
+      mergeEditableRecordValues(
+        editableSources
+      );
 
     const next={
-      ...existing,
+      ...(directExisting||{}),
       ...row,
       ...editable,
+      recordType:"unit",
       state:"active",
       firstSeenUnder90:
-        existing.firstSeenUnder90||
+        directExisting
+          ?.firstSeenUnder90||
         nowIso,
       lastSeenUnder90:nowIso,
       archivedAt:null,
       returnUseful:null,
+      closedAt:null,
       updatedFromWorkbookAt:nowIso
     };
 
     if(
-      comparableRecord(existing)!==
-      comparableRecord(next)||
-      existing.state!=="active"
+      !directExisting||
+      comparableRecord(directExisting)!==
+        comparableRecord(next)||
+      directExisting.state!=="active"||
+      JSON.stringify(
+        recordEditableValues(
+          directExisting
+        )
+      )!==
+      JSON.stringify(editable)
     ){
       updates[row.recordKey]=next;
     }
   });
 
-  Object.entries(existingRecords)
-    .forEach(([recordKey,record])=>{
-      if(activeKeys.has(recordKey)){
+  existingEntries.forEach(
+    ([recordKey,record])=>{
+      const isUnitRecord=
+        record&&
+        (
+          record.recordType==="unit"||
+          Array.isArray(record.orders)
+        );
+
+      if(
+        !isUnitRecord||
+        activeKeys.has(recordKey)
+      ){
         return;
       }
 
@@ -2315,6 +2615,7 @@ async function synchronizeTrackingRecords(
       ){
         updates[recordKey]={
           ...record,
+          recordType:"unit",
           state:"archived",
           archivedAt:
             record.archivedAt||
@@ -2332,13 +2633,9 @@ async function synchronizeTrackingRecords(
         currentBranch.useful!==null&&
         currentBranch.useful<0.90
       ){
-        /*
-          The branch is still below 90%, but the VRO is no longer open.
-          Preserve the record and notes without putting it into the
-          Returned-to-Above-90% archive.
-        */
         updates[recordKey]={
           ...record,
+          recordType:"unit",
           state:"closed",
           closedAt:
             record.closedAt||
@@ -2346,14 +2643,14 @@ async function synchronizeTrackingRecords(
           updatedFromWorkbookAt:nowIso
         };
       }
-    });
+    }
+  );
 
   if(Object.keys(updates).length){
     await db.ref(REPORT_ROOT)
       .update(updates);
   }
 }
-
 function mergeRowsWithFirebase(){
   const currentByKey=new Map(
     workbookRows.map(row=>[
@@ -2382,7 +2679,11 @@ function mergeRowsWithFirebase(){
   )
     .filter(record=>
       record&&
-      record.state==="archived"
+      record.state==="archived"&&
+      (
+        record.recordType==="unit"||
+        Array.isArray(record.orders)
+      )
     )
     .map(record=>({
       ...record,
@@ -2600,17 +2901,29 @@ function rowPassesFilters(row){
   );
 }
 
-function currentRows(){
-  const source=
-    selectedTab==="active"
-      ?activeRows
-      :archiveRows;
-
-  return source.filter(
-    rowPassesFilters
+function visibleActiveRows(){
+  return activeRows.filter(record=>
+    !temporaryActiveKeys.has(record.recordKey)
   );
 }
 
+function currentRows(){
+  const source=selectedTab==="active"
+    ?visibleActiveRows()
+    :archiveRows;
+
+  return source.filter(rowPassesFilters);
+}
+function htmlLines(value){
+  return escapeHtml(value)
+    .replace(/\n/g,"<br>");
+}
+
+function assetCell(record){
+  return `<div class="unit-main">
+    ${escapeHtml(record.unit||"—")}
+  </div>`;
+}
 function memoIcon(){
   return `<svg
     viewBox="0 0 24 24"
@@ -2636,7 +2949,7 @@ function memoCell(
       ${
         empty
           ?"Click the memo icon to add an update."
-          :escapeHtml(display)
+          :htmlLines(display)
       }
     </div>
     <button
@@ -2691,32 +3004,34 @@ function dropdownCell(
 }
 
 function statusBadge(status){
-  const normalized=
-    upper(status)==="OOS"
-      ?"OOS"
-      :"ACTIVE";
+  const normalized=upper(status)==="OOS"?"OOS":"ACTIVE";
 
   return `<span class="status-badge ${normalized.toLowerCase()}">
     ${normalized}
   </span>`;
 }
 
-function ecdCell(value){
-  const date=parseDate(value);
-  const pastDue=
-    date&&
-    date<
-      new Date(
-        new Date().getFullYear(),
-        new Date().getMonth(),
-        new Date().getDate()
-      );
+function statusCell(record){
+  if(selectedTab!=="active"){
+    return statusBadge(record.assetStatus);
+  }
 
-  return `<span class="ecd-main ${pastDue?"ecd-past":""}">
+  return `<select
+    class="temporary-status-select"
+    data-temporary-status-key="${escapeHtml(record.recordKey)}"
+    aria-label="Temporarily clear ${escapeHtml(record.unit||"unit")} from the OOS report"
+  >
+    <option value="OOS" selected>OOS</option>
+    <option value="ACTIVE">ACTIVE</option>
+  </select>`;
+}
+function ecdCell(record){
+  const date=parseDate(record?.ecd);
+
+  return `<span class="ecd-main">
     ${date?escapeHtml(dateText(date)):"—"}
   </span>`;
 }
-
 function renderRows(){
   const rows=currentRows();
   const body=$("#report-body");
@@ -2725,8 +3040,8 @@ function renderRows(){
   $("#table-summary").textContent=
     `${rows.length.toLocaleString()} ${
       selectedTab==="active"
-        ?"open VRO row"
-        :"archived VRO row"
+        ?"OOS unit row"
+        :"archived unit row"
     }${rows.length===1?"":"s"}`;
 
   if(!rows.length){
@@ -2753,20 +3068,8 @@ function renderRows(){
           }
         </div>
       </td>
-      <td>
-        <div class="unit-main">
-          ${escapeHtml(record.unit||"—")}
-        </div>
-        <div class="unit-sub">
-          VRO ${escapeHtml(record.order)}
-          ${
-            record.vin
-              ?` · ${escapeHtml(record.vin)}`
-              :""
-          }
-        </div>
-      </td>
-      <td>${statusBadge(record.assetStatus)}</td>
+      <td>${assetCell(record)}</td>
+      <td>${statusCell(record)}</td>
       <td>
         ${memoCell(
           record,
@@ -2776,12 +3079,13 @@ function renderRows(){
       <td>
         ${memoCell(
           record,
-          "problem",
-          record.problemSource
+          "problem"
         )}
       </td>
       <td>
-        ${escapeHtml(record.vendor||"—")}
+        <div class="cell-lines">
+          ${htmlLines(record.vendor||"—")}
+        </div>
       </td>
       <td>
         ${dropdownCell(
@@ -2797,7 +3101,7 @@ function renderRows(){
           PARTS_OPTIONS
         )}
       </td>
-      <td>${ecdCell(record.ecd)}</td>
+      <td>${ecdCell(record)}</td>
       <td>
         ${dropdownCell(
           record,
@@ -2842,7 +3146,7 @@ function render(){
     }`;
 
   $("#active-count-pill").textContent=
-    `Active VROs ${activeRows.length.toLocaleString()}`;
+    `OOS Units ${visibleActiveRows().length.toLocaleString()}`;
 
   $("#archive-count-pill").textContent=
     `RTS >90% ${archiveRows.length.toLocaleString()}`;
@@ -2908,16 +3212,12 @@ function openMemo(
     `Edit ${titleByField[field]||field}`;
 
   $("#memo-record").textContent=
-    `${record.unit||"Unit"} · VRO ${record.order} · ${record.branch}`;
+    `${record.unit||"Unit"} · ${record.branch}`;
 
   const saved=clean(record[field]);
-  const fallback=
-    field==="problem"
-      ?clean(record.problemSource)
-      :"";
 
   $("#memo-textarea").value=
-    saved||fallback;
+    saved;
 
   $("#memo-modal").classList.add(
     "open"
@@ -3001,6 +3301,12 @@ async function loadReport(){
   $("#refresh-btn").disabled=true;
   $("#export-btn").disabled=true;
 
+  temporaryActiveKeys.clear();
+
+  if(activeRows.length){
+    render();
+  }
+
   try{
     showWarnings([]);
 
@@ -3060,7 +3366,7 @@ async function loadReport(){
     setStatus(
       "ok",
       "Garda Below 90% Reporting loaded",
-      `${workbookRows.length.toLocaleString()} open VRO row${workbookRows.length===1?"":"s"} across ${
+      `${workbookRows.length.toLocaleString()} OOS unit row${workbookRows.length===1?"":"s"} across ${
         [...branchMetrics.values()]
           .filter(branch=>
             branch.useful!==null&&
@@ -3097,63 +3403,43 @@ async function loadReport(){
 }
 
 function exportValue(record,field){
-  const value=clean(record[field]);
-
-  if(
-    field==="problem"&&
-    !value
-  ){
-    return clean(record.problemSource);
-  }
-
-  return value;
+  return clean(record[field]);
 }
 
 function exportRows(rows,isArchive=false){
-  return rows.map(record=>[
-    record.region||"",
-    record.subregion||"",
-    record.branch||"",
-    record.unit||"",
-    record.order||"",
-    record.assetStatus||"",
-    exportValue(
-      record,
-      "actionNextSteps"
-    ),
-    exportValue(
-      record,
-      "problem"
-    ),
-    record.vendor||"",
-    record.estimateStatus||"",
-    record.partsStatus||"",
-    parseDate(record.ecd)||"",
-    record.holdUpIssue||"",
-    exportValue(
-      record,
-      "notes"
-    ),
-    record.vin||"",
-    record.vroStatus||"",
-    record.repclass||"",
-    parseDate(record.opened)||"",
-    isArchive
-      ?parseDate(record.archivedAt)||""
-      :"",
-    isArchive
-      ?record.returnUseful??""
-      :""
-  ]);
-}
+  return rows.map(record=>{
+    const baseRow=[
+      record.region||"",
+      record.subregion||"",
+      record.branch||"",
+      record.unit||"",
+      record.assetStatus||"OOS",
+      exportValue(record,"actionNextSteps"),
+      exportValue(record,"problem"),
+      record.vendor||"",
+      record.estimateStatus||"",
+      record.partsStatus||"",
+      parseDate(record.ecd)||"",
+      record.holdUpIssue||"",
+      exportValue(record,"notes")
+    ];
 
+    if(isArchive){
+      baseRow.push(
+        parseDate(record.archivedAt)||"",
+        record.returnUseful??""
+      );
+    }
+
+    return baseRow;
+  });
+}
 function excelHeaders(isArchive=false){
   const headers=[
     "GARDA REGION",
     "GARDA SUBREGION",
     "BRANCH",
     "UNIT #",
-    "VRO #",
     "STATUS",
     "ACTION/NEXT STEPS",
     "PROBLEM",
@@ -3162,11 +3448,7 @@ function excelHeaders(isArchive=false){
     "PARTS STATUS",
     "ECD",
     "HOLD-UP ISSUE",
-    "NOTES",
-    "VIN",
-    "VRO STATUS",
-    "REPCLASS",
-    "OPENED DATE"
+    "NOTES"
   ];
 
   if(isArchive){
@@ -3178,11 +3460,10 @@ function excelHeaders(isArchive=false){
 
   return headers;
 }
-
 function excelColumnWidths(isArchive=false){
   const widths=[
-    16,18,25,16,19,12,42,38,26,
-    24,20,15,18,42,22,22,22,16
+    16,18,25,16,12,42,42,
+    28,24,20,15,18,42
   ];
 
   if(isArchive){
@@ -3191,7 +3472,6 @@ function excelColumnWidths(isArchive=false){
 
   return widths;
 }
-
 function styleExcelWorksheet(
   worksheet,
   rowCount,
@@ -3204,17 +3484,6 @@ function styleExcelWorksheet(
       showGridLines:false
     }
   ];
-
-  worksheet.autoFilter={
-    from:{
-      row:1,
-      column:1
-    },
-    to:{
-      row:Math.max(1,rowCount+1),
-      column:columnCount
-    }
-  };
 
   worksheet.getRow(1).height=30;
 
@@ -3237,7 +3506,7 @@ function styleExcelWorksheet(
       };
       cell.alignment={
         vertical:"middle",
-        horizontal:"center",
+        horizontal:"left",
         wrapText:true
       };
       cell.border={
@@ -3317,19 +3586,14 @@ function styleExcelWorksheet(
     );
   }
 
-  worksheet.getColumn(12)
+  worksheet.getColumn(11)
     .numFmt="mm/dd/yyyy";
 
-  worksheet.getColumn(18)
-    .numFmt="mm/dd/yyyy";
-
-  if(columnCount>=19){
-    worksheet.getColumn(19)
+  if(columnCount>=15){
+    worksheet.getColumn(14)
       .numFmt="mm/dd/yyyy";
-  }
 
-  if(columnCount>=20){
-    worksheet.getColumn(20)
+    worksheet.getColumn(15)
       .numFmt="0.0%";
   }
 }
@@ -3364,13 +3628,31 @@ function addExcelReportTable(
   );
 
   const lastColumn=headers.length;
-  const tableRows=rows.length
+
+  const normalizedRows=(rows.length
     ?rows
-    :[Array(lastColumn).fill("")];
+    :[Array(lastColumn).fill("")]
+  ).map((row,rowIndex)=>{
+    const normalized=[...row];
+
+    if(normalized.length!==lastColumn){
+      throw new Error(
+        `${sheetName}: export row ${rowIndex+1} has ${normalized.length} values but ${lastColumn} headers.`
+      );
+    }
+
+    return normalized.map(value=>
+      value===undefined||
+      value===null
+        ?""
+        :value
+    );
+  });
 
   /*
-    addTable creates both the header and the data rows. Writing the rows
-    separately before addTable would duplicate them in the workbook.
+    ExcelJS reads table.columns[j].style for every value in a row.
+    Keeping every row exactly the same length as the header definition
+    prevents the undefined-column "reading style" export failure.
   */
   worksheet.addTable({
     name:tableName,
@@ -3386,14 +3668,15 @@ function addExcelReportTable(
     },
     columns:headers.map(name=>({
       name,
-      filterButton:true
+      filterButton:true,
+      style:{}
     })),
-    rows:tableRows
+    rows:normalizedRows
   });
 
   styleExcelWorksheet(
     worksheet,
-    tableRows.length,
+    normalizedRows.length,
     lastColumn
   );
 
@@ -3414,7 +3697,7 @@ async function exportReport(){
     workbook.modified=new Date();
 
     const filteredActive=
-      activeRows.filter(
+      visibleActiveRows().filter(
         rowPassesFilters
       );
 
@@ -3574,6 +3857,28 @@ function initializeEvents(){
 
         renderFilter(filterType);
         renderRows();
+        return;
+      }
+
+      const temporaryStatusKey=
+        event.target.dataset
+          ?.temporaryStatusKey;
+
+      if(
+        temporaryStatusKey&&
+        event.target.value==="ACTIVE"
+      ){
+        const record=findRecord(temporaryStatusKey);
+
+        temporaryActiveKeys.add(temporaryStatusKey);
+        render();
+
+        setStatus(
+          "ok",
+          "Unit temporarily cleared",
+          `${record?.unit||"The unit"} is hidden until the next workbook refresh. If the refreshed source still shows OOS, it will return automatically.`
+        );
+
         return;
       }
 
