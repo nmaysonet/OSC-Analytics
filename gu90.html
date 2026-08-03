@@ -1106,7 +1106,7 @@
     <a class="nav-item" href="index.html#config">Customer Configuration</a>
     <a class="nav-item" href="opd.html">Vended Operational Performance</a>
     <a class="nav-item" href="vendor_cov.html">Vendor Coverage</a>
-    <a class="nav-item active" href="garda_below90_reporting.html">Garda Below 90% Reporting</a>
+    <a class="nav-item active" href="gu90.html">Garda Below 90% Reporting</a>
 
     <div class="sidebar-truck">
       <svg
@@ -1409,6 +1409,7 @@ const OPEN_STATUSES=new Set([
 
 const ESTIMATE_OPTIONS=[
   "",
+  "Awaiting to Receive",
   "Pending Internal Review",
   "Garda Pending Approval",
   "Approved"
@@ -1416,6 +1417,7 @@ const ESTIMATE_OPTIONS=[
 
 const PARTS_OPTIONS=[
   "",
+  "N/A",
   "Ordered",
   "Backordered",
   "Parts on Hand"
@@ -1426,6 +1428,7 @@ const HOLD_UP_OPTIONS=[
   "OSC",
   "Garda",
   "Vendor",
+  "Parts Lead Time",
   "N/A"
 ];
 
@@ -3559,7 +3562,7 @@ function styleExcelWorksheet(
     }
   ];
 
-  worksheet.getRow(1).height=30;
+  worksheet.getRow(1).height=24;
 
   worksheet.getRow(1)
     .eachCell(cell=>{
@@ -3581,7 +3584,8 @@ function styleExcelWorksheet(
       cell.alignment={
         vertical:"middle",
         horizontal:"left",
-        wrapText:true
+        wrapText:false,
+        shrinkToFit:true
       };
       cell.border={
         top:{
