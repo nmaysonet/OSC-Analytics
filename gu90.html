@@ -1106,7 +1106,7 @@
     <a class="nav-item" href="index.html#config">Customer Configuration</a>
     <a class="nav-item" href="opd.html">Vended Operational Performance</a>
     <a class="nav-item" href="vendor_cov.html">Vendor Coverage</a>
-    <a class="nav-item active" href="gu90.html">Garda Below 90% Reporting</a>
+    <a class="nav-item active" href="garda_below90_reporting.html">Garda Below 90% Reporting</a>
 
     <div class="sidebar-truck">
       <svg
@@ -1433,7 +1433,7 @@ const HOLD_UP_OPTIONS=[
 ];
 
 const APPROVED_BRANCHES=[
-["Birmingham, AL","260-22"],["Charleston, SC","250-92"],["Hampton-Chespeake, VA","140-31"],["Knoxville, TN","270-10"],["Memphis, TN","270-32"],["Myrtle Beach, SC","250-97"],["Nashville, TN","270-08"],["Richmond, VA","140-89"],["Roanoke, VA","140-24"],["Kansas City, KS","130-63"],["Lexington, KY","270-65"],["Salina, KS","130-62"],["St. Louis, MO","130-69"],["Wichita, KS","130-65"],["Cincinnati, OH","190-67"],["Columbus, OH","190-64"],["Dayton, OH","190-65"],["Grand Rapids, MI","190-60"],["Bloomington, IL","190-24"],["Chippewa Falls, WI","190-53"],["Davenport, IA","190-45"],["Duluth, MN","190-58"],["Green Bay, WI","190-55"],["Madison, WI","190-56"],["Dover, DE","140-92"],["Johnstown, PA","140-82"],["Wilkes Barre, PA","140-95"],["Burlington, VT","144-21"],["Rochester, NY","280-55"],["Schenectady, NY","140-27"],["West Hempstead, NY","140-28"],["Austin, TX","130-75"],["Corpus Christi, TX","130-72"],["El Paso, TX","130-20"],["Laredo, TX","130-76"],["Little Rock, AR","260-07"],["Lubbock, TX","130-11"],["McAllen, TX","130-74"],["Shreveport, LA","260-03"],["Jackson, MS","260-23"],["Jacksonville, FL","260-19"],["Lafayette, LA","260-01"],["Mobile, AL","260-31"],["New Orleans, LA","260-02"],["Red Bluff, CA","120-15"],["Sparks, NV","120-61"],["Bend, OR","230-60"],["Boise, ID","230-39"],["Helena, MT","230-87"],["Lewiston, ID","230-80"],["Medford, OR","230-59"],["Missoula, MT","230-91"],["Mt. Vernon, WA","230-53"],["Renton, WA","230-51"],["Roseburg, OR","230-58"],["Spokane, WA","230-50"],["Tacoma, WA","230-52"],["Wenatchee, WA","230-49"],["Yakima, WA","230-47"],["Santa Maria, CA","120-23"],["Albuquerque, NM","130-88"],["Casper, WY","230-95"],["Cheyenne, WY","230-96"],["Colorado Springs, CO","230-16"],["Flagstaff, AZ","120-27"],["Grand Junction, CO","230-34"],["Tucson, AZ","120-82"]
+["Birmingham, AL","260-22"],["Charleston, SC","250-92"],["Hampton-Chespeake, VA","140-31"],["Knoxville, TN","270-10"],["Memphis, TN","270-32"],["Myrtle Beach, SC","250-97"],["Nashville, TN","270-08"],["Richmond, VA","140-89"],["Roanoke, VA","140-24"],["Kansas City, KS","130-63"],["Lexington, KY","270-65"],["Salina, KS","130-62"],["Wichita, KS","130-65"],["Cincinnati, OH","190-67"],["Columbus, OH","190-64"],["Dayton, OH","190-65"],["Grand Rapids, MI","190-60"],["Bloomington, IL","190-24"],["Chippewa Falls, WI","190-53"],["Davenport, IA","190-45"],["Duluth, MN","190-58"],["Green Bay, WI","190-55"],["Madison, WI","190-56"],["Dover, DE","140-92"],["Johnstown, PA","140-82"],["Wilkes Barre, PA","140-95"],["Burlington, VT","144-21"],["Rochester, NY","280-55"],["Schenectady, NY","140-27"],["West Hempstead, NY","140-28"],["Austin, TX","130-75"],["Corpus Christi, TX","130-72"],["El Paso, TX","130-20"],["Laredo, TX","130-76"],["Little Rock, AR","260-07"],["Lubbock, TX","130-11"],["McAllen, TX","130-74"],["Shreveport, LA","260-03"],["Jackson, MS","260-23"],["Jacksonville, FL","260-19"],["Lafayette, LA","260-01"],["Mobile, AL","260-31"],["New Orleans, LA","260-02"],["Red Bluff, CA","120-15"],["Sparks, NV","120-61"],["Bend, OR","230-60"],["Boise, ID","230-39"],["Helena, MT","230-87"],["Lewiston, ID","230-80"],["Medford, OR","230-59"],["Missoula, MT","230-91"],["Mt. Vernon, WA","230-53"],["Renton, WA","230-51"],["Roseburg, OR","230-58"],["Spokane, WA","230-50"],["Tacoma, WA","230-52"],["Wenatchee, WA","230-49"],["Yakima, WA","230-47"],["Santa Maria, CA","120-23"],["Albuquerque, NM","130-88"],["Casper, WY","230-95"],["Cheyenne, WY","230-96"],["Colorado Springs, CO","230-16"],["Flagstaff, AZ","120-27"],["Grand Junction, CO","230-34"],["Tucson, AZ","120-82"]
 ];
 const BRANCH_BY_CODE=new Map(
   APPROVED_BRANCHES.map(([name,code])=>[
@@ -1955,6 +1955,23 @@ function parseOosUnits(aoa){
       continue;
     }
 
+    const incomingStatus=
+      upper(row[statusIndex])==="OOS"
+        ?"OOS"
+        :"ACTIVE";
+    const existing=map.get(unit);
+
+    /*
+      Match OPD's unique OOS-unit rule. If duplicate source rows exist,
+      an OOS record must not be overwritten by a later Active record.
+    */
+    if(
+      existing?.status==="OOS"&&
+      incomingStatus!=="OOS"
+    ){
+      continue;
+    }
+
     map.set(
       unit,
       {
@@ -1970,10 +1987,7 @@ function parseOosUnits(aoa){
           BRANCH_BY_CODE.get(branchCode)
             ?.name||
           clean(row[branchIndex]),
-        status:
-          upper(row[statusIndex])==="OOS"
-            ?"OOS"
-            :"ACTIVE"
+        status:incomingStatus
       }
     );
   }
@@ -1997,6 +2011,11 @@ function mergeVroRecord(
         incoming.vendor
           ?[incoming.vendor]
           :[]
+      ),
+      ecdValues:new Set(
+        parseDate(incoming.ecd)
+          ?[dateText(incoming.ecd)]
+          :[]
       )
     };
   }
@@ -2013,11 +2032,10 @@ function mergeVroRecord(
     );
   }
 
-  if(
-    !parseDate(existing.ecd)&&
-    parseDate(incoming.ecd)
-  ){
-    existing.ecd=incoming.ecd;
+  if(parseDate(incoming.ecd)){
+    existing.ecdValues.add(
+      dateText(incoming.ecd)
+    );
   }
 
   if(
@@ -2099,16 +2117,8 @@ function parseOpenVros(
   );
 
   const orders=new Map();
-  const under90Codes=new Set(
-    [...usefulMap.values()]
-      .filter(branch=>
-        branch.useful!==null&&
-        branch.useful<0.90
-      )
-      .map(branch=>branch.code)
-  );
-
   let missingOrderRows=0;
+  let missingUnitRows=0;
 
   for(
     let rowIndex=1;
@@ -2124,22 +2134,19 @@ function parseOpenVros(
       continue;
     }
 
-    const branchCode=extractBranchCode(
-      customer
-    );
     const vroStatus=upper(
       row[vroStatusIndex]
     );
 
-    if(
-      !under90Codes.has(branchCode)||
-      !OPEN_STATUSES.has(vroStatus)
-    ){
+    if(!OPEN_STATUSES.has(vroStatus)){
       continue;
     }
 
     const order=clean(
       row[orderIndex]
+    );
+    const unit=normalizedUnit(
+      row[unitIndex]
     );
 
     if(!order){
@@ -2147,15 +2154,26 @@ function parseOpenVros(
       continue;
     }
 
-    const unit=normalizedUnit(
-      row[unitIndex]
-    );
-    const branch=usefulMap.get(
-      branchCode
-    );
+    if(!unit){
+      missingUnitRows++;
+      continue;
+    }
+
+    /*
+      Match open work by Unit # across every Garda VRO. The VRO customer
+      branch may differ from the current OOS GARDA branch, so it must not
+      be used to discard an otherwise valid unit-level ECD.
+    */
     const unitRecord=oosMap.get(
       unit
     );
+    const customerBranchCode=
+      extractBranchCode(customer);
+    const branchCode=
+      unitRecord?.branchCode||
+      customerBranchCode;
+    const branch=
+      usefulMap.get(branchCode);
 
     const incoming={
       recordKey:safeFirebaseKey(order),
@@ -2163,16 +2181,16 @@ function parseOpenVros(
       vin:clean(row[vinIndex]),
       unit,
       region:
-        branch?.region||
         unitRecord?.region||
+        branch?.region||
         "",
       subregion:
-        branch?.subregion||
         unitRecord?.subregion||
+        branch?.subregion||
         "",
       branch:
-        branch?.branch||
         unitRecord?.branch||
+        branch?.branch||
         customer,
       branchCode,
       branchUseful:
@@ -2205,7 +2223,13 @@ function parseOpenVros(
 
   if(missingOrderRows){
     warnings.push(
-      `${missingOrderRows} below-90% VRO row(s) were excluded because the Order field was blank.`
+      `${missingOrderRows} open Garda VRO row(s) were excluded because the Order field was blank.`
+    );
+  }
+
+  if(missingUnitRows){
+    warnings.push(
+      `${missingUnitRows} open Garda VRO row(s) were excluded because the Unit field was blank.`
     );
   }
 
@@ -2219,18 +2243,12 @@ function parseOpenVros(
       ].filter(Boolean).join(" | "),
       vendor:[
         ...record.vendors
-      ].filter(Boolean).join(" | ")
+      ].filter(Boolean).join(" | "),
+      ecds:[
+        ...record.ecdValues
+      ].filter(Boolean)
     }))
     .sort((a,b)=>
-      String(a.region).localeCompare(
-        String(b.region)
-      )||
-      String(a.subregion).localeCompare(
-        String(b.subregion)
-      )||
-      String(a.branch).localeCompare(
-        String(b.branch)
-      )||
       String(a.unit).localeCompare(
         String(b.unit)
       )||
@@ -2239,7 +2257,6 @@ function parseOpenVros(
       )
     );
 }
-
 
 function uniqueValues(values){
   return [
@@ -2286,44 +2303,132 @@ function startOfToday(){
   );
 }
 
-function latestFutureDateText(values){
+function meaningfulEcdDate(value){
+  const date=parseDate(value);
+
+  if(
+    !date||
+    date.getFullYear()<2000
+  ){
+    return null;
+  }
+
+  return date;
+}
+
+function latestAvailableEcdText(values){
   const today=startOfToday();
 
   const dates=(values||[])
-    .map(parseDate)
-    .filter(Boolean)
-    .filter(date=>date>today)
+    .map(meaningfulEcdDate)
+    .filter(Boolean);
+
+  const currentOrFuture=dates
+    .filter(date=>date>=today)
     .sort((a,b)=>b-a);
 
-  return dates.length
-    ?dateText(dates[0])
+  if(currentOrFuture.length){
+    return dateText(
+      currentOrFuture[0]
+    );
+  }
+
+  /*
+    When no current/future ECD exists, show the latest overdue ECD rather
+    than leaving the unit blank.
+  */
+  const overdue=dates
+    .filter(date=>date<today)
+    .sort((a,b)=>b-a);
+
+  return overdue.length
+    ?dateText(overdue[0])
     :"";
 }
 
-function groupOpenVrosByUnit(orderRows){
+function groupOpenVrosByUnit(
+  orderRows,
+  oosMap,
+  usefulMap
+){
   const units=new Map();
+  const under90Codes=new Set(
+    [...usefulMap.values()]
+      .filter(branch=>
+        branch.useful!==null&&
+        branch.useful<0.90
+      )
+      .map(branch=>branch.code)
+  );
 
-  (orderRows||[]).forEach(orderRow=>{
-    const identity=unitIdentityForRecord(orderRow);
-    const mapKey=`${orderRow.branchCode}|${identity}`;
-
-    if(!units.has(mapKey)){
-      units.set(mapKey,{
-        recordKey:unitRecordKey(orderRow),
+  /*
+    Start with every unique OOS GARDA unit at a current below-90 branch.
+    This guarantees GU90 and OPD use the same unit population, including
+    OOS units that do not currently have an open VRO.
+  */
+  [...oosMap.values()]
+    .filter(unitRecord=>
+      unitRecord.status==="OOS"&&
+      under90Codes.has(
+        unitRecord.branchCode
+      )
+    )
+    .forEach(unitRecord=>{
+      const branch=usefulMap.get(
+        unitRecord.branchCode
+      );
+      const base={
+        recordKey:safeFirebaseKey(
+          `UNIT_${unitRecord.branchCode}_${unitRecord.unit}`
+        ),
         recordType:"unit",
-        unitIdentity:identity,
-        unit:orderRow.unit||"",
-        region:orderRow.region||"",
-        subregion:orderRow.subregion||"",
-        branch:orderRow.branch||"",
-        branchCode:orderRow.branchCode||"",
-        branchUseful:orderRow.branchUseful??null,
-        assetStatus:orderRow.assetStatus||"ACTIVE",
+        unitIdentity:unitRecord.unit,
+        unit:unitRecord.unit,
+        region:
+          unitRecord.region||
+          branch?.region||
+          "",
+        subregion:
+          unitRecord.subregion||
+          branch?.subregion||
+          "",
+        branch:
+          unitRecord.branch||
+          branch?.branch||
+          "",
+        branchCode:
+          unitRecord.branchCode,
+        branchUseful:
+          branch?.useful??null,
+        assetStatus:"OOS",
         vros:[]
-      });
+      };
+
+      units.set(
+        unitRecord.unit,
+        base
+      );
+    });
+
+  /*
+    Enrich each OOS unit with all open Garda VROs matched by Unit #,
+    regardless of the branch written on the VRO.
+  */
+  (orderRows||[]).forEach(orderRow=>{
+    const unitRecord=units.get(
+      normalizedUnit(orderRow.unit)
+    );
+
+    if(!unitRecord){
+      return;
     }
 
-    const unitRecord=units.get(mapKey);
+    const orderEcds=Array.isArray(
+      orderRow.ecds
+    )
+      ?orderRow.ecds
+      :[orderRow.ecd];
+
     unitRecord.vros.push({
       order:clean(orderRow.order),
       vin:clean(orderRow.vin),
@@ -2331,24 +2436,45 @@ function groupOpenVrosByUnit(orderRows){
       repclass:clean(orderRow.repclass),
       problem:clean(orderRow.problemSource),
       vendor:clean(orderRow.vendor),
-      ecd:dateText(orderRow.ecd),
+      ecds:uniqueValues(orderEcds),
       opened:dateText(orderRow.opened)
     });
-
-    if(upper(orderRow.assetStatus)==="OOS"){
-      unitRecord.assetStatus="OOS";
-    }
   });
 
   return [...units.values()]
     .map(unitRecord=>{
-      unitRecord.vros.sort((a,b)=>String(a.order).localeCompare(String(b.order)));
+      unitRecord.vros.sort((a,b)=>
+        String(a.order).localeCompare(
+          String(b.order)
+        )
+      );
 
-      const orders=uniqueValues(unitRecord.vros.map(vro=>vro.order));
-      const vins=uniqueValues(unitRecord.vros.map(vro=>vro.vin));
-      const statuses=uniqueValues(unitRecord.vros.map(vro=>vro.vroStatus));
-      const repclasses=uniqueValues(unitRecord.vros.map(vro=>vro.repclass));
-      const vendors=uniqueValues(unitRecord.vros.map(vro=>vro.vendor));
+      const orders=uniqueValues(
+        unitRecord.vros.map(vro=>vro.order)
+      );
+      const vins=uniqueValues(
+        unitRecord.vros.map(vro=>vro.vin)
+      );
+      const statuses=uniqueValues(
+        unitRecord.vros.map(
+          vro=>vro.vroStatus
+        )
+      );
+      const repclasses=uniqueValues(
+        unitRecord.vros.map(
+          vro=>vro.repclass
+        )
+      );
+      const vendors=uniqueValues(
+        unitRecord.vros.map(
+          vro=>vro.vendor
+        )
+      );
+      const allEcds=uniqueValues(
+        unitRecord.vros.flatMap(
+          vro=>vro.ecds||[]
+        )
+      );
 
       return {
         ...unitRecord,
@@ -2360,20 +2486,40 @@ function groupOpenVrosByUnit(orderRows){
         vroStatus:statuses.join(" | "),
         repclasses,
         repclass:repclasses.join(" | "),
-        problemSource:unitRecord.vros.map(vro=>vro.problem).filter(Boolean).join("\n"),
+        problemSource:unitRecord.vros
+          .map(vro=>vro.problem)
+          .filter(Boolean)
+          .join("\n"),
         vendor:vendors.join("\n"),
-        ecds:uniqueValues(unitRecord.vros.map(vro=>vro.ecd)),
-        ecd:latestFutureDateText(unitRecord.vros.map(vro=>vro.ecd)),
-        openedDates:uniqueValues(unitRecord.vros.map(vro=>vro.opened)),
-        opened:earliestDateText(unitRecord.vros.map(vro=>vro.opened))
+        ecds:allEcds,
+        ecd:latestAvailableEcdText(
+          allEcds
+        ),
+        openedDates:uniqueValues(
+          unitRecord.vros.map(
+            vro=>vro.opened
+          )
+        ),
+        opened:earliestDateText(
+          unitRecord.vros.map(
+            vro=>vro.opened
+          )
+        )
       };
     })
-    .filter(unitRecord=>upper(unitRecord.assetStatus)==="OOS")
     .sort((a,b)=>
-      String(a.region).localeCompare(String(b.region))||
-      String(a.subregion).localeCompare(String(b.subregion))||
-      String(a.branch).localeCompare(String(b.branch))||
-      String(a.unitIdentity).localeCompare(String(b.unitIdentity))
+      String(a.region).localeCompare(
+        String(b.region)
+      )||
+      String(a.subregion).localeCompare(
+        String(b.subregion)
+      )||
+      String(a.branch).localeCompare(
+        String(b.branch)
+      )||
+      String(a.unitIdentity).localeCompare(
+        String(b.unitIdentity)
+      )
     );
 }
 function recordOrders(record){
@@ -2471,7 +2617,9 @@ function parseWorkbook(buffer){
   );
 
   const rows=groupOpenVrosByUnit(
-    orderRows
+    orderRows,
+    oosByUnit,
+    branchMetrics
   );
 
   reportDateKey=localDateKey();
@@ -3101,9 +3249,14 @@ function statusCell(record){
   </select>`;
 }
 function ecdCell(record){
-  const date=parseDate(record?.ecd);
+  const date=meaningfulEcdDate(
+    record?.ecd
+  );
+  const overdue=
+    date&&
+    date<startOfToday();
 
-  return `<span class="ecd-main">${date?escapeHtml(dateText(date)):"—"}</span>`;
+  return `<span class="ecd-main ${overdue?"ecd-past":""}">${date?escapeHtml(dateText(date)):"—"}</span>`;
 }
 function renderRows(){
   const rows=currentRows();
@@ -3397,7 +3550,7 @@ async function loadReport(){
     setStatus(
       "",
       "Processing below-90% reporting",
-      "Identifying approved vended branches, open VROs, unit statuses, vendors, and ECDs..."
+      "Identifying below-90 branches, every OOS GARDA unit, and all open Garda VROs by Unit #..."
     );
 
     const parsed=parseWorkbook(buffer);
