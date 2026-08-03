@@ -2944,7 +2944,15 @@ function updateOneFilter(
 
   state.values=values;
 
-  if(!state.initialized){
+  /*
+    Firebase can trigger a render before the workbook rows arrive. In
+    that case the filter is initialized with zero values. Treat the
+    first later population as a true first load and select everything.
+  */
+  if(
+    !state.initialized||
+    priorValues.size===0
+  ){
     state.selected=new Set(values);
     state.initialized=true;
     return;
@@ -3691,13 +3699,17 @@ function excelHeaders(isArchive=false){
   return headers;
 }
 function excelColumnWidths(isArchive=false){
+  /*
+    Extra width is reserved for Excel's table-filter dropdown arrows so
+    the header labels remain fully readable on one line.
+  */
   const widths=[
-    16,18,25,16,12,42,42,
-    28,24,20,15,18,42
+    20,22,28,17,14,44,44,
+    30,26,22,17,21,44
   ];
 
   if(isArchive){
-    widths.push(17,22);
+    widths.push(20,25);
   }
 
   return widths;
@@ -3715,23 +3727,23 @@ function styleExcelWorksheet(
     }
   ];
 
-  worksheet.getRow(1).height=24;
+  worksheet.getRow(1).height=26;
 
   worksheet.getRow(1)
     .eachCell(cell=>{
       cell.font={
-        name:"Raleway",
-        size:10,
+        name:"Arial",
+        size:9,
         bold:true,
         color:{
-          argb:"FFFFFFFF"
+          argb:"FF000000"
         }
       };
       cell.fill={
         type:"pattern",
         pattern:"solid",
         fgColor:{
-          argb:"FF0B1F3A"
+          argb:"FFFFFFFF"
         }
       };
       cell.alignment={
@@ -3743,19 +3755,19 @@ function styleExcelWorksheet(
       cell.border={
         top:{
           style:"thin",
-          color:{argb:"FF61758A"}
+          color:{argb:"FF7F8C98"}
         },
         bottom:{
-          style:"thin",
-          color:{argb:"FF61758A"}
+          style:"medium",
+          color:{argb:"FF1F2937"}
         },
         left:{
           style:"thin",
-          color:{argb:"FF61758A"}
+          color:{argb:"FFB7C0C8"}
         },
         right:{
           style:"thin",
-          color:{argb:"FF61758A"}
+          color:{argb:"FFB7C0C8"}
         }
       };
     });
@@ -3891,7 +3903,7 @@ function addExcelReportTable(
     headerRow:true,
     totalsRow:false,
     style:{
-      theme:"TableStyleMedium2",
+      theme:"TableStyleLight1",
       showFirstColumn:false,
       showLastColumn:false,
       showRowStripes:true,
