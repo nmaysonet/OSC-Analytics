@@ -790,6 +790,58 @@
       line-height:1.45;
     }
 
+    .vendor-required-cell {
+      display:grid;
+      grid-template-columns:minmax(0,1fr) 29px;
+      align-items:start;
+      gap:7px;
+      min-height:42px;
+      text-align:left!important;
+    }
+
+    .vendor-required-copy {
+      min-width:0;
+      text-align:left!important;
+    }
+
+    .vendor-required-name {
+      color:#203040;
+      font-size:10px;
+      font-weight:900;
+      line-height:1.4;
+      overflow-wrap:anywhere;
+    }
+
+    .vendor-required-name.missing {
+      color:var(--red);
+      font-style:italic;
+    }
+
+    .vendor-required-star {
+      margin-right:3px;
+      color:var(--red);
+      font-size:12px;
+      font-weight:900;
+    }
+
+    .vendor-source-note {
+      margin-top:3px;
+      color:#7b8794;
+      font-size:8px;
+      font-weight:700;
+      line-height:1.3;
+    }
+
+    .vendor-required-cell .memo-btn {
+      border-color:#d49a95;
+      color:var(--red);
+    }
+
+    .vendor-required-cell .memo-btn:hover {
+      border-color:var(--red);
+      background:var(--red-bg);
+    }
+
     .status-badge {
       display:inline-flex;
       align-items:center;
@@ -878,45 +930,6 @@
       border-color:var(--blue);
       outline:none;
       box-shadow:0 0 0 2px rgba(31,78,120,.12);
-    }
-
-    .temporary-status-select {
-      display:block;
-      width:100%;
-      min-width:78px;
-      max-width:none;
-      min-height:33px;
-      padding:4px 24px 4px 9px;
-      border:1px solid #e1a6a1;
-      border-radius:4px;
-      background-color:var(--red-bg);
-      color:var(--red);
-      font-size:10px;
-      font-weight:900;
-      line-height:1.2;
-      letter-spacing:0;
-      white-space:nowrap;
-      overflow:visible;
-      text-align:left!important;
-      text-align-last:left!important;
-      box-sizing:border-box;
-    }
-
-    .temporary-status-select:focus {
-      border-color:var(--red);
-      outline:none;
-      box-shadow:0 0 0 2px rgba(180,35,24,.12);
-    }
-
-    .temporary-status-select.manual-active {
-      border-color:#8fc9aa;
-      background:var(--green-bg);
-      color:var(--green);
-    }
-
-    .temporary-status-select.manual-active:focus {
-      border-color:var(--green);
-      box-shadow:0 0 0 2px rgba(22,121,74,.12);
     }
 
     .ecd-main {
@@ -1055,11 +1068,6 @@
       tbody td:nth-child(5) {
         width:108px;
         min-width:108px;
-      }
-
-      .temporary-status-select {
-        min-width:82px;
-        font-size:10px;
       }
 
       .brand-name {
@@ -1462,7 +1470,6 @@ let selectedTab="active";
 let recordsListener=null;
 let memoContext=null;
 let loading=false;
-const temporaryActiveKeys=new Set();
 
 const filterState={
   region:{
@@ -2569,6 +2576,7 @@ function mergeEditableRecordValues(records){
       mergedText("actionNextSteps"),
     problem:mergedText("problem"),
     notes:mergedText("notes"),
+    vendorName:mergedText("vendorName"),
     estimateStatus:
       firstSelection("estimateStatus"),
     partsStatus:
@@ -2641,6 +2649,9 @@ function recordEditableValues(record){
     ),
     notes:clean(
       record?.notes
+    ),
+    vendorName:clean(
+      record?.vendorName
     ),
     estimateStatus:clean(
       record?.estimateStatus
@@ -3165,6 +3176,42 @@ function htmlLines(value){
 function assetCell(record){
   return `<div class="unit-main">${escapeHtml(record.unit||"—")}</div>`;
 }
+function vendorRequiresName(record){
+  return upper(
+    record?.vendor
+  ).includes("CREDIT CARD");
+}
+
+function vendorDashboardName(record){
+  if(!vendorRequiresName(record)){
+    return clean(record?.vendor);
+  }
+
+  return clean(record?.vendorName);
+}
+
+function vendorExportName(record){
+  if(!vendorRequiresName(record)){
+    return clean(record?.vendor);
+  }
+
+  return (
+    clean(record?.vendorName)||
+    "VENDOR NAME REQUIRED"
+  );
+}
+
+function vendorCell(record){
+  if(!vendorRequiresName(record)){
+    return `<div class="cell-lines">${htmlLines(record.vendor||"—")}</div>`;
+  }
+
+  const vendorName=vendorDashboardName(record);
+  const missing=!vendorName;
+
+  return `<div class="vendor-required-cell"><div class="vendor-required-copy"><div class="vendor-required-name ${missing?"missing":""}"><span class="vendor-required-star">*</span>${missing?"Enter Vendor Name":escapeHtml(vendorName)}</div><div class="vendor-source-note">Source vendor: CREDIT CARD</div></div><button class="memo-btn" type="button" data-memo-record="${escapeHtml(record.recordKey)}" data-memo-field="vendorName" title="Enter required Vendor Name">${memoIcon()}</button></div>`;
+}
+
 function memoIcon(){
   return `<svg
     viewBox="0 0 24 24"
@@ -3240,21 +3287,13 @@ function statusBadge(status){
 }
 
 function statusCell(record){
-  if(selectedTab!=="active"){
-    return statusBadge(record.assetStatus);
-  }
-
-  const manualActive=
-    temporaryActiveKeys.has(record.recordKey);
-
-  return `<select
-    class="temporary-status-select ${manualActive?"manual-active":""}"
-    data-temporary-status-key="${escapeHtml(record.recordKey)}"
-    aria-label="Mark ${escapeHtml(record.unit||"unit")} active pending the next workbook refresh"
-  >
-    <option value="OOS" ${manualActive?"":"selected"}>OOS</option>
-    <option value="ACTIVE" ${manualActive?"selected":""}>ACTIVE</option>
-  </select>`;
+  /*
+    GU90 is an OOS-only report. Status is sourced from OOS GARDA and is
+    intentionally read-only.
+  */
+  return statusBadge(
+    record.assetStatus||"OOS"
+  );
 }
 function ecdCell(record){
   const date=meaningfulEcdDate(
@@ -3316,7 +3355,7 @@ function renderRows(){
           "problem"
         )}
       </td>
-      <td><div class="cell-lines">${htmlLines(record.vendor||"—")}</div></td>
+      <td>${vendorCell(record)}</td>
       <td>
         ${dropdownCell(
           record,
@@ -3430,6 +3469,7 @@ function openMemo(
     actionNextSteps:
       "Action / Next Steps",
     problem:"Problem",
+    vendorName:"Vendor Name * Required",
     notes:"Notes"
   };
 
@@ -3448,6 +3488,11 @@ function openMemo(
 
   $("#memo-textarea").value=
     saved;
+
+  $("#memo-textarea").placeholder=
+    field==="vendorName"
+      ?"Enter the actual vendor name used for this CREDIT CARD repair."
+      :"Enter update...";
 
   $("#memo-modal").classList.add(
     "open"
@@ -3531,17 +3576,6 @@ async function loadReport(){
   $("#refresh-btn").disabled=true;
   $("#export-btn").disabled=true;
 
-  /*
-    Manual ACTIVE selections are pending indicators only. On refresh,
-    the source workbook becomes authoritative again:
-    - source ACTIVE: the OOS-only parser removes the unit;
-    - source OOS: the row remains and the dropdown returns to OOS.
-  */
-  temporaryActiveKeys.clear();
-
-  if(activeRows.length){
-    render();
-  }
 
   try{
     showWarnings([]);
@@ -3649,12 +3683,10 @@ function exportRows(rows,isArchive=false){
       record.subregion||"",
       record.branch||"",
       record.unit||"",
-      temporaryActiveKeys.has(record.recordKey)
-        ?"ACTIVE"
-        :(record.assetStatus||"OOS"),
+      record.assetStatus||"OOS",
       exportValue(record,"actionNextSteps"),
       exportValue(record,"problem"),
-      record.vendor||"",
+      vendorExportName(record),
       record.estimateStatus||"",
       record.partsStatus||"",
       parseDate(record.ecd)||"",
@@ -3949,6 +3981,27 @@ async function exportReport(){
         rowPassesFilters
       );
 
+    const missingRequiredVendors=
+      filteredActive.filter(record=>
+        vendorRequiresName(record)&&
+        !clean(record.vendorName)
+      );
+
+    if(missingRequiredVendors.length){
+      const units=missingRequiredVendors
+        .map(record=>record.unit||"Unknown Unit")
+        .slice(0,12)
+        .join(", ");
+      const additional=
+        missingRequiredVendors.length>12
+          ?` and ${missingRequiredVendors.length-12} more`
+          :"";
+
+      throw new Error(
+        `Vendor Name is required for CREDIT CARD unit(s): ${units}${additional}. Use the memo icon in the Vendor column before exporting.`
+      );
+    }
+
     addExcelReportTable(
       workbook,
       "Under 90% Useful Branches",
@@ -4103,35 +4156,6 @@ function initializeEvents(){
           filterType
         );
         renderRows();
-        return;
-      }
-
-      const temporaryStatusKey=
-        event.target.dataset
-          ?.temporaryStatusKey;
-
-      if(temporaryStatusKey){
-        const record=findRecord(temporaryStatusKey);
-
-        if(event.target.value==="ACTIVE"){
-          temporaryActiveKeys.add(temporaryStatusKey);
-
-          setStatus(
-            "ok",
-            "Unit marked ACTIVE pending refresh",
-            `${record?.unit||"The unit"} remains in the current report. It will be removed only if the next workbook refresh shows it back in service.`
-          );
-        }else{
-          temporaryActiveKeys.delete(temporaryStatusKey);
-
-          setStatus(
-            "ok",
-            "Unit restored to OOS",
-            `${record?.unit||"The unit"} remains in the current OOS report.`
-          );
-        }
-
-        render();
         return;
       }
 
