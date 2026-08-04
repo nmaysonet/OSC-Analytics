@@ -3032,8 +3032,14 @@ function flashVendorKey(label){
   if(value.includes("UNIQUE ERS VENDORS"))return "ers";
   if(value.includes("UNIQUE VENDED REPAIR VENDORS"))return "repair";
   if(value.includes("UNIQUE PM VENDORS"))return "pm";
-  /if(value.includes("BRANCH LOCATIONS BELOW VENDOR COVERAGE"))return "belowCoverage";/
-  if(value.includes("TOP 10 BRANCHES BEING REVIEWED FOR VENDOR COVERAGE"))return "topHeader";
+  if(
+    value.includes(
+      "TOP 10 BRANCHES BEING REVIEWED FOR VENDOR COVERAGE"
+    )||
+    value.includes(
+      "TOP 10 BRANCHES NEEDING VENDOR COVERAGE"
+    )
+  )return "topHeader";
   return "";
 }
 function flashErsKey(label){
@@ -3073,8 +3079,7 @@ function parseGardaFlash(aoa,warnings){
     total:null,
     ers:null,
     repair:null,
-    pm:null,
-    belowCoverage:null
+    pm:null
   };
 
   const vendorTop=[];
@@ -3180,6 +3185,11 @@ function parseGardaFlash(aoa,warnings){
     }
 
     if(readingTopBranches&&vendorLabel){
+      /*
+        Preserve every populated review row supplied by GARDA FLASH.
+        The workbook can contain more than ten rows even though the
+        section title retains the Top 10 wording.
+      */
       vendorTop.push({
         name:vendorLabel,
         current:numberOrNull(row[9])
@@ -3228,7 +3238,7 @@ function parseGardaFlash(aoa,warnings){
       topValueHeader:
         vendorTopValueHeader||
         "Total # Unqiue Historical Vendors",
-      top:vendorTop.slice(0,10)
+      top:vendorTop
     }
   };
 }
@@ -3982,7 +3992,6 @@ async function saveSnapshot(data){if(!db||$("#report-date").value!==localDateKey
   ers:data.vendor.ers,
   repair:data.vendor.repair,
   pm:data.vendor.pm,
-  belowCoverage:data.vendor.belowCoverage,
   topValueHeader:
     data.vendor.topValueHeader||
     "Total # Unqiue Historical Vendors",
@@ -4500,8 +4509,7 @@ function renderVendor(){
     ["Total # Vendors","total"],
     ["Unique ERS Vendors","ers"],
     ["Unique Vended Repair Vendors","repair"],
-    ["Unique PM Vendors","pm"],
-    ["# Branch Locations Below Vendor Coverage","belowCoverage"]
+    ["Unique PM Vendors","pm"]
   ];
 
   let rows=metrics.map(([label,key])=>`
@@ -4513,7 +4521,7 @@ function renderVendor(){
 
   if((vendor.top||[]).length){
     rows+=`<tr class="vendor-section-row">
-      <td>Top 10 Branches Needing Vendor Coverage</td>
+      <td>Top 10 Branches Being Reviewed for Vendor Coverage</td>
       <td>${escapeHtml(
         vendor.topValueHeader||
         "Total # Unqiue Historical Vendors"
@@ -5738,8 +5746,7 @@ async function exportGardaTables(){
     ["Total # Vendors","total"],
     ["Unique ERS Vendors","ers"],
     ["Unique Vended Repair Vendors","repair"],
-    ["Unique PM Vendors","pm"],
-    ["# Branch Locations Below Vendor Coverage","belowCoverage"]
+    ["Unique PM Vendors","pm"]
   ].forEach(([label,key])=>{
     vendorRows.push([
       label,
@@ -5753,7 +5760,7 @@ async function exportGardaTables(){
     vendorGroupRow=vendorRows.length;
 
     vendorRows.push([
-      "Top 10 Branches Needing Vendor Coverage",
+      "Top 10 Branches Being Reviewed for Vendor Coverage",
       vendor.topValueHeader||
         "Total # Unqiue Historical Vendors"
     ]);
