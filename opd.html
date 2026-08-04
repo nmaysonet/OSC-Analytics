@@ -9,6 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-storage.js"></script>
@@ -8474,6 +8475,42 @@ function maintenanceForecastData(){
           )
         :1;
 
+    const bucketCounts=
+      MAINTENANCE_FORECAST_BUCKETS
+        .map(bucket=>
+          Math.max(
+            0,
+            Number(
+              metric.ecd?.[bucket.key]||0
+            )
+          )
+        );
+    const totalBucketCount=
+      bucketCounts.reduce(
+        (sum,value)=>sum+value,
+        0
+      );
+    const availableComplianceGap=
+      Number.isFinite(validCurrent)
+        ?Math.max(
+            0,
+            complianceCeiling-
+            validCurrent
+          )
+        :0;
+    const slippageAdjustedGain=
+      availableComplianceGap*
+      completionRate;
+    const slippageAdjustedMaximum=
+      Number.isFinite(validCurrent)
+        ?Math.min(
+            complianceCeiling,
+            1,
+            validCurrent+
+            slippageAdjustedGain
+          )
+        :null;
+
     const points=[
       {
         key:"current",
@@ -8482,37 +8519,51 @@ function maintenanceForecastData(){
         date:reportDate,
         bucketCount:0,
         creditedCount:0,
+        cumulativeBucketCount:0,
+        cumulativeBucketShare:0,
         projectedCompliance:
           validCurrent
       }
     ];
 
-    let projected=
-      validCurrent;
+    let cumulativeBucketCount=0;
 
     MAINTENANCE_FORECAST_BUCKETS
-      .forEach(bucket=>{
-        const bucketCount=Math.max(
-          0,
-          Number(
-            metric.ecd?.[bucket.key]||0
-          )
-        );
+      .forEach((bucket,index)=>{
+        const bucketCount=
+          bucketCounts[index];
         const creditedCount=
           bucketCount*completionRate;
 
-        if(
-          Number.isFinite(projected)&&
-          Number.isFinite(totalUnits)&&
-          totalUnits>0
-        ){
-          projected=Math.min(
-            complianceCeiling,
-            1,
-            projected+
-              creditedCount/totalUnits
-          );
-        }
+        cumulativeBucketCount+=
+          bucketCount;
+
+        const cumulativeBucketShare=
+          totalBucketCount>0
+            ?Math.min(
+                1,
+                cumulativeBucketCount/
+                totalBucketCount
+              )
+            :1;
+
+        const projectedCompliance=
+          Number.isFinite(
+            validCurrent
+          )&&
+          Number.isFinite(
+            slippageAdjustedMaximum
+          )
+            ?Math.min(
+                slippageAdjustedMaximum,
+                validCurrent+
+                (
+                  slippageAdjustedMaximum-
+                  validCurrent
+                )*
+                cumulativeBucketShare
+              )
+            :null;
 
         points.push({
           ...bucket,
@@ -8522,10 +8573,9 @@ function maintenanceForecastData(){
           ),
           bucketCount,
           creditedCount,
-          projectedCompliance:
-            Number.isFinite(projected)
-              ?projected
-              :null
+          cumulativeBucketCount,
+          cumulativeBucketShare,
+          projectedCompliance
         });
       });
 
@@ -8545,6 +8595,10 @@ function maintenanceForecastData(){
       currentCompliance:
         validCurrent,
       complianceCeiling,
+      availableComplianceGap,
+      slippageAdjustedGain,
+      slippageAdjustedMaximum,
+      totalBucketCount,
       schedulingGap:
         Number.isFinite(gap)
           ?gap
@@ -8566,8 +8620,11 @@ function maintenanceForecastHeaders(){
     "ECD Bucket Count",
     "15% Slippage Count",
     "Credited Completion Count",
+    "Cumulative ECD Bucket Share",
     "Total Active VINs",
     "Scheduling Gap",
+    "Compliance Ceiling",
+    "Slippage-Adjusted Maximum",
     "Forecast Compliance"
   ];
 }
@@ -8600,9 +8657,14 @@ function maintenanceForecastRows(
             point.creditedCount||0
           ),
           Number(
+            point.cumulativeBucketShare||0
+          ),
+          Number(
             forecast.totalUnits||0
           ),
           forecast.schedulingGap,
+          forecast.complianceCeiling,
+          forecast.slippageAdjustedMaximum,
           point.projectedCompliance
         ]);
       });
@@ -8616,8 +8678,9 @@ function appendMaintenanceTrendSheet(
   forecasts
 ){
   /*
-    The first 38 worksheet rows are intentionally reserved for the
-    four 2×2 forecast-chart images. Supporting data begins below them.
+    The first 38 worksheet rows are intentionally reserved for four
+    editable native Excel charts in a 2×2 layout. Supporting data begins
+    below them.
   */
   const chartSpace=Array.from(
     {length:38},
@@ -8644,11 +8707,14 @@ function appendMaintenanceTrendSheet(
     {wch:18},
     {wch:18},
     {wch:24},
+    {wch:25},
     {wch:18},
     {wch:18},
+    {wch:20},
+    {wch:27},
     {wch:22},
     ...Array.from(
-      {length:7},
+      {length:4},
       ()=>({wch:12})
     )
   ];
@@ -8758,7 +8824,13 @@ function appendMaintenanceTrendSheet(
       };
 
       if(
-        (column===7||column===8)&&
+        (
+          column===6||
+          column===8||
+          column===9||
+          column===10||
+          column===11
+        )&&
         typeof worksheet[ref].v==="number"
       ){
         worksheet[ref].z="0.0%";
@@ -8870,281 +8942,828 @@ function maintenanceForecastAxis(
   return config;
 }
 
-function drawForecastDiamond(
-  context,
-  x,
-  y,
-  size,
-  color
+const NATIVE_FORECAST_HELPERS=[
+  {
+    categoryColumn:24,
+    valueColumn:25
+  },
+  {
+    categoryColumn:26,
+    valueColumn:27
+  },
+  {
+    categoryColumn:28,
+    valueColumn:29
+  },
+  {
+    categoryColumn:30,
+    valueColumn:31
+  }
+];
+
+function excelColumnName(
+  columnNumber
 ){
-  context.save();
-  context.translate(x,y);
-  context.rotate(Math.PI/4);
-  context.fillStyle=color;
-  context.fillRect(
-    -size/2,
-    -size/2,
-    size,
-    size
-  );
-  context.restore();
+  let value=columnNumber;
+  let name="";
+
+  while(value>0){
+    const remainder=
+      (value-1)%26;
+
+    name=
+      String.fromCharCode(
+        65+remainder
+      )+
+      name;
+
+    value=Math.floor(
+      (value-1)/26
+    );
+  }
+
+  return name;
 }
 
-function renderComplianceForecastChart(
-  forecast
+function nativeXmlEscape(value){
+  return String(
+    value??""
+  )
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;")
+    .replace(/'/g,"&apos;");
+}
+
+function nativeRegexEscape(value){
+  return String(value)
+    .replace(
+      /[.*+?^${}()|[\]\\]/g,
+      "\\$&"
+    );
+}
+
+function nativeForecastCategoryLabel(
+  point,
+  index
 ){
-  const width=760;
-  const height=315;
-  const canvas=document.createElement(
-    "canvas"
-  );
-  canvas.width=width;
-  canvas.height=height;
+  const dateLabel=
+    forecastDateLabel(
+      point.date
+    );
 
-  const context=canvas.getContext("2d");
-  const lineColor="#4F81BD";
-  const borderColor="#202020";
-  const gridColor="#D5D5D5";
-  const labelColor="#111111";
-  const margin={
-    left:68,
-    right:8,
-    top:55,
-    bottom:88
-  };
-  const plotLeft=margin.left;
-  const plotRight=
-    width-margin.right;
-  const plotTop=margin.top;
-  const plotBottom=
-    height-margin.bottom;
-  const plotHeight=
-    plotBottom-plotTop;
-  const categoryWidth=
-    (plotRight-plotLeft)/5;
+  if(index===0){
+    return [
+      "CURRENT",
+      dateLabel,
+      "CURRENT"
+    ].join("\n");
+  }
+
+  return [
+    point.label,
+    `${dateLabel} DUE`,
+    point.rangeLabel
+  ].join("\n");
+}
+
+function writeNativeForecastHelperData(
+  worksheet,
+  forecasts
+){
+  (forecasts||[])
+    .slice(0,4)
+    .forEach(
+      (forecast,index)=>{
+        const helper=
+          NATIVE_FORECAST_HELPERS[
+            index
+          ];
+
+        worksheet.getCell(
+          1,
+          helper.categoryColumn
+        ).value=
+          `${forecast.programLabel} Category`;
+
+        worksheet.getCell(
+          1,
+          helper.valueColumn
+        ).value=
+          `${forecast.programLabel} Forecast`;
+
+        forecast.points
+          .slice(0,5)
+          .forEach(
+            (point,pointIndex)=>{
+              const row=
+                pointIndex+2;
+              const value=Number(
+                point.projectedCompliance
+              );
+
+              worksheet.getCell(
+                row,
+                helper.categoryColumn
+              ).value=
+                nativeForecastCategoryLabel(
+                  point,
+                  pointIndex
+                );
+
+              worksheet.getCell(
+                row,
+                helper.valueColumn
+              ).value=
+                Number.isFinite(value)
+                  ?value
+                  :0;
+
+              worksheet.getCell(
+                row,
+                helper.valueColumn
+              ).numFmt="0.00%";
+            }
+          );
+
+        worksheet.getColumn(
+          helper.categoryColumn
+        ).hidden=true;
+
+        worksheet.getColumn(
+          helper.valueColumn
+        ).hidden=true;
+      }
+    );
+}
+
+function nativeForecastStringCache(
+  labels
+){
+  return `<c:strCache><c:ptCount val="${labels.length}"/>${
+    labels.map(
+      (label,index)=>
+        `<c:pt idx="${index}"><c:v>${nativeXmlEscape(label)}</c:v></c:pt>`
+    ).join("")
+  }</c:strCache>`;
+}
+
+function nativeForecastNumberCache(
+  values
+){
+  return `<c:numCache><c:formatCode>0.00%</c:formatCode><c:ptCount val="${values.length}"/>${
+    values.map(
+      (value,index)=>
+        `<c:pt idx="${index}"><c:v>${Number(value).toFixed(6)}</c:v></c:pt>`
+    ).join("")
+  }</c:numCache>`;
+}
+
+function nativeForecastChartXml(
+  forecast,
+  chartIndex,
+  helper
+){
+  const labels=forecast.points
+    .slice(0,5)
+    .map(
+      nativeForecastCategoryLabel
+    );
   const values=forecast.points
-    .map(point=>
-      Number(
+    .slice(0,5)
+    .map(point=>{
+      const value=Number(
         point.projectedCompliance
-      )
+      );
+
+      return Number.isFinite(value)
+        ?value
+        :0;
+    });
+  const axis=
+    maintenanceForecastAxis(
+      forecast.programKey,
+      values
     );
-  const axis=maintenanceForecastAxis(
-    forecast.programKey,
-    values
-  );
-  const axisRange=
-    axis.maximum-axis.minimum;
-
-  context.fillStyle="#FFFFFF";
-  context.fillRect(
-    0,
-    0,
-    width,
-    height
-  );
-
-  context.strokeStyle=borderColor;
-  context.lineWidth=3;
-  context.strokeRect(
-    1.5,
-    1.5,
-    width-3,
-    height-3
-  );
-
-  context.fillStyle=labelColor;
-  context.font=
-    "700 23px Arial, sans-serif";
-  context.textAlign="center";
-  context.fillText(
-    forecast.title,
-    width/2,
-    38
-  );
-
-  /*
-    Category separators match the provided example: points are centered
-    inside five equal sections and light vertical lines divide them.
-  */
-  context.strokeStyle=gridColor;
-  context.lineWidth=1;
-
-  for(let index=1;index<5;index++){
-    const x=
-      plotLeft+
-      categoryWidth*index;
-
-    context.beginPath();
-    context.moveTo(
-      x,
-      plotTop
+  const categoryColumn=
+    excelColumnName(
+      helper.categoryColumn
     );
-    context.lineTo(
-      x,
-      height-8
+  const valueColumn=
+    excelColumnName(
+      helper.valueColumn
     );
-    context.stroke();
-  }
+  const sheetName=
+    "Vended Maintenance Trends";
+  const categoryFormula=
+    `'${sheetName}'!$${categoryColumn}$2:$${categoryColumn}$6`;
+  const valueFormula=
+    `'${sheetName}'!$${valueColumn}$2:$${valueColumn}$6`;
+  const categoryAxisId=
+    50010001+
+    chartIndex*10;
+  const valueAxisId=
+    categoryAxisId+1;
 
-  context.strokeStyle="#B8B8B8";
-  context.beginPath();
-  context.moveTo(
-    plotLeft,
-    plotBottom
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <c:lang val="en-US"/>
+  <c:roundedCorners val="0"/>
+  <c:chart>
+    <c:title>
+      <c:tx>
+        <c:rich>
+          <a:bodyPr/>
+          <a:lstStyle/>
+          <a:p>
+            <a:pPr>
+              <a:defRPr sz="1800" b="1" baseline="0">
+                <a:latin typeface="Arial"/>
+              </a:defRPr>
+            </a:pPr>
+            <a:r>
+              <a:rPr lang="en-US" sz="1800" b="1" baseline="0">
+                <a:latin typeface="Arial"/>
+              </a:rPr>
+              <a:t>${nativeXmlEscape(forecast.title)}</a:t>
+            </a:r>
+          </a:p>
+        </c:rich>
+      </c:tx>
+      <c:layout/>
+    </c:title>
+    <c:plotArea>
+      <c:layout/>
+      <c:lineChart>
+        <c:grouping val="standard"/>
+        <c:varyColors val="0"/>
+        <c:ser>
+          <c:idx val="0"/>
+          <c:order val="0"/>
+          <c:tx>
+            <c:v>${nativeXmlEscape(forecast.programLabel)}</c:v>
+          </c:tx>
+          <c:spPr>
+            <a:ln w="28575">
+              <a:solidFill>
+                <a:srgbClr val="4F81BD"/>
+              </a:solidFill>
+            </a:ln>
+          </c:spPr>
+          <c:marker>
+            <c:symbol val="diamond"/>
+            <c:size val="6"/>
+            <c:spPr>
+              <a:solidFill>
+                <a:srgbClr val="4F81BD"/>
+              </a:solidFill>
+              <a:ln>
+                <a:solidFill>
+                  <a:srgbClr val="4F81BD"/>
+                </a:solidFill>
+              </a:ln>
+            </c:spPr>
+          </c:marker>
+          <c:cat>
+            <c:strRef>
+              <c:f>${nativeXmlEscape(categoryFormula)}</c:f>
+              ${nativeForecastStringCache(labels)}
+            </c:strRef>
+          </c:cat>
+          <c:val>
+            <c:numRef>
+              <c:f>${nativeXmlEscape(valueFormula)}</c:f>
+              ${nativeForecastNumberCache(values)}
+            </c:numRef>
+          </c:val>
+          <c:smooth val="0"/>
+        </c:ser>
+        <c:marker val="1"/>
+        <c:axId val="${categoryAxisId}"/>
+        <c:axId val="${valueAxisId}"/>
+      </c:lineChart>
+      <c:catAx>
+        <c:axId val="${categoryAxisId}"/>
+        <c:scaling>
+          <c:orientation val="minMax"/>
+        </c:scaling>
+        <c:axPos val="b"/>
+        <c:majorGridlines>
+          <c:spPr>
+            <a:ln w="9525">
+              <a:solidFill>
+                <a:srgbClr val="D5D5D5"/>
+              </a:solidFill>
+            </a:ln>
+          </c:spPr>
+        </c:majorGridlines>
+        <c:tickLblPos val="low"/>
+        <c:txPr>
+          <a:bodyPr/>
+          <a:lstStyle/>
+          <a:p>
+            <a:pPr>
+              <a:defRPr sz="800" b="1" baseline="0">
+                <a:latin typeface="Arial"/>
+              </a:defRPr>
+            </a:pPr>
+            <a:endParaRPr lang="en-US"/>
+          </a:p>
+        </c:txPr>
+        <c:crossAx val="${valueAxisId}"/>
+        <c:crosses val="autoZero"/>
+        <c:auto val="1"/>
+        <c:lblAlgn val="ctr"/>
+        <c:lblOffset val="100"/>
+        <c:noMultiLvlLbl val="0"/>
+      </c:catAx>
+      <c:valAx>
+        <c:axId val="${valueAxisId}"/>
+        <c:scaling>
+          <c:orientation val="minMax"/>
+          <c:max val="${axis.maximum}"/>
+          <c:min val="${axis.minimum}"/>
+        </c:scaling>
+        <c:axPos val="l"/>
+        <c:numFmt formatCode="0.00%" sourceLinked="0"/>
+        <c:tickLblPos val="nextTo"/>
+        <c:txPr>
+          <a:bodyPr/>
+          <a:lstStyle/>
+          <a:p>
+            <a:pPr>
+              <a:defRPr sz="900" b="1" baseline="0">
+                <a:latin typeface="Arial"/>
+              </a:defRPr>
+            </a:pPr>
+            <a:endParaRPr lang="en-US"/>
+          </a:p>
+        </c:txPr>
+        <c:crossAx val="${categoryAxisId}"/>
+        <c:crosses val="autoZero"/>
+        <c:crossBetween val="between"/>
+        <c:majorUnit val="${axis.step}"/>
+      </c:valAx>
+      <c:spPr>
+        <a:solidFill>
+          <a:srgbClr val="FFFFFF"/>
+        </a:solidFill>
+        <a:ln>
+          <a:noFill/>
+        </a:ln>
+      </c:spPr>
+    </c:plotArea>
+    <c:plotVisOnly val="1"/>
+    <c:dispBlanksAs val="gap"/>
+    <c:showDLblsOverMax val="0"/>
+  </c:chart>
+  <c:spPr>
+    <a:solidFill>
+      <a:srgbClr val="FFFFFF"/>
+    </a:solidFill>
+    <a:ln w="19050">
+      <a:solidFill>
+        <a:srgbClr val="202020"/>
+      </a:solidFill>
+    </a:ln>
+  </c:spPr>
+  <c:printSettings>
+    <c:headerFooter/>
+    <c:pageMargins b="0.75" l="0.7" r="0.7" t="0.75" header="0.3" footer="0.3"/>
+    <c:pageSetup/>
+  </c:printSettings>
+</c:chartSpace>`;
+}
+
+function nativeForecastDrawingXml(
+  chartCount
+){
+  const anchors=[
+    {
+      fromColumn:0,
+      fromRow:0,
+      toColumn:8,
+      toRow:17
+    },
+    {
+      fromColumn:8,
+      fromRow:0,
+      toColumn:16,
+      toRow:17
+    },
+    {
+      fromColumn:0,
+      fromRow:18,
+      toColumn:8,
+      toRow:35
+    },
+    {
+      fromColumn:8,
+      fromRow:18,
+      toColumn:16,
+      toRow:35
+    }
+  ];
+
+  const drawings=anchors
+    .slice(0,chartCount)
+    .map((anchor,index)=>`
+  <xdr:twoCellAnchor editAs="oneCell">
+    <xdr:from>
+      <xdr:col>${anchor.fromColumn}</xdr:col>
+      <xdr:colOff>0</xdr:colOff>
+      <xdr:row>${anchor.fromRow}</xdr:row>
+      <xdr:rowOff>0</xdr:rowOff>
+    </xdr:from>
+    <xdr:to>
+      <xdr:col>${anchor.toColumn}</xdr:col>
+      <xdr:colOff>0</xdr:colOff>
+      <xdr:row>${anchor.toRow}</xdr:row>
+      <xdr:rowOff>0</xdr:rowOff>
+    </xdr:to>
+    <xdr:graphicFrame macro="">
+      <xdr:nvGraphicFramePr>
+        <xdr:cNvPr id="${index+2}" name="Compliance Forecast Chart ${index+1}"/>
+        <xdr:cNvGraphicFramePr/>
+      </xdr:nvGraphicFramePr>
+      <xdr:xfrm>
+        <a:off x="0" y="0"/>
+        <a:ext cx="0" cy="0"/>
+      </xdr:xfrm>
+      <a:graphic>
+        <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart">
+          <c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="rId${index+1}"/>
+        </a:graphicData>
+      </a:graphic>
+    </xdr:graphicFrame>
+    <xdr:clientData/>
+  </xdr:twoCellAnchor>`).join("");
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">${drawings}
+</xdr:wsDr>`;
+}
+
+function nativeForecastDrawingRelsXml(
+  chartNumbers
+){
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${
+    chartNumbers.map(
+      (chartNumber,index)=>
+        `<Relationship Id="rId${index+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/chart${chartNumber}.xml"/>`
+    ).join("")
+  }</Relationships>`;
+}
+
+function nativeNormalizeZipPath(path){
+  const output=[];
+
+  String(path)
+    .replace(/\\/g,"/")
+    .split("/")
+    .forEach(part=>{
+      if(!part||part==="."){
+        return;
+      }
+
+      if(part===".."){
+        output.pop();
+        return;
+      }
+
+      output.push(part);
+    });
+
+  return output.join("/");
+}
+
+function nativeNextPartNumber(
+  zip,
+  expression
+){
+  const numbers=Object.keys(
+    zip.files
+  )
+    .map(path=>{
+      const match=path.match(
+        expression
+      );
+
+      return match
+        ?Number(match[1])
+        :0;
+    })
+    .filter(Boolean);
+
+  return numbers.length
+    ?Math.max(...numbers)+1
+    :1;
+}
+
+function nativeNextRelationshipId(
+  relationshipsXml
+){
+  const ids=[
+    ...String(
+      relationshipsXml||""
+    ).matchAll(
+      /\bId="rId(\d+)"/g
+    )
+  ].map(match=>
+    Number(match[1])
   );
-  context.lineTo(
-    plotRight,
-    plotBottom
-  );
-  context.stroke();
 
-  const tickCount=Math.round(
-    axisRange/axis.step
-  );
+  return `rId${
+    ids.length
+      ?Math.max(...ids)+1
+      :1
+  }`;
+}
 
-  context.fillStyle=labelColor;
-  context.font=
-    "700 12px Arial, sans-serif";
-  context.textAlign="right";
-
-  for(
-    let tick=0;
-    tick<=tickCount;
-    tick++
+function nativeAddContentTypeOverride(
+  xml,
+  partName,
+  contentType
+){
+  if(
+    xml.includes(
+      `PartName="${partName}"`
+    )
   ){
-    const value=
-      axis.maximum-
-      tick*axis.step;
-    const y=
-      plotTop+
-      (
-        (axis.maximum-value)/
-        axisRange
-      )*plotHeight;
+    return xml;
+  }
 
-    context.fillText(
-      `${(value*100).toFixed(2)}%`,
-      plotLeft-9,
-      y+4
+  return xml.replace(
+    "</Types>",
+    `<Override PartName="${partName}" ContentType="${contentType}"/></Types>`
+  );
+}
+
+async function addNativeForecastCharts(
+  workbookBuffer,
+  forecasts
+){
+  if(typeof JSZip==="undefined"){
+    throw new Error(
+      "Native Excel chart support could not load. Refresh the page and export again."
     );
   }
 
-  const pointPosition=index=>({
-    x:
-      plotLeft+
-      categoryWidth*
-      (index+0.5),
-    y:
-      plotBottom-
-      (
-        (
-          Math.max(
-            axis.minimum,
-            Math.min(
-              axis.maximum,
-              values[index]
-            )
-          )-
-          axis.minimum
-        )/
-        axisRange
-      )*plotHeight
+  const chartForecasts=
+    (forecasts||[]).slice(0,4);
+
+  if(!chartForecasts.length){
+    return workbookBuffer;
+  }
+
+  const zip=await JSZip.loadAsync(
+    workbookBuffer
+  );
+  const workbookXmlFile=
+    zip.file("xl/workbook.xml");
+  const workbookRelsFile=
+    zip.file(
+      "xl/_rels/workbook.xml.rels"
+    );
+
+  if(
+    !workbookXmlFile||
+    !workbookRelsFile
+  ){
+    throw new Error(
+      "The exported workbook package is missing its workbook relationships."
+    );
+  }
+
+  const workbookXml=
+    await workbookXmlFile.async(
+      "string"
+    );
+  const workbookRelsXml=
+    await workbookRelsFile.async(
+      "string"
+    );
+  const sheetTag=[
+    ...workbookXml.matchAll(
+      /<sheet\b[^>]*\/>/g
+    )
+  ].find(match=>
+    match[0].includes(
+      'name="Vended Maintenance Trends"'
+    )
+  );
+
+  if(!sheetTag){
+    throw new Error(
+      "Vended Maintenance Trends was not found in the exported workbook."
+    );
+  }
+
+  const sheetRelationshipMatch=
+    sheetTag[0].match(
+      /\br:id="([^"]+)"/
+    );
+
+  if(!sheetRelationshipMatch){
+    throw new Error(
+      "The Vended Maintenance Trends relationship could not be resolved."
+    );
+  }
+
+  const workbookRelationshipId=
+    sheetRelationshipMatch[1];
+  const relationshipTag=[
+    ...workbookRelsXml.matchAll(
+      /<Relationship\b[^>]*\/>/g
+    )
+  ].find(match=>
+    match[0].includes(
+      `Id="${workbookRelationshipId}"`
+    )
+  );
+
+  if(!relationshipTag){
+    throw new Error(
+      "The worksheet relationship target could not be found."
+    );
+  }
+
+  const targetMatch=
+    relationshipTag[0].match(
+      /\bTarget="([^"]+)"/
+    );
+
+  if(!targetMatch){
+    throw new Error(
+      "The worksheet relationship target is blank."
+    );
+  }
+
+  const target=targetMatch[1];
+  const sheetPath=nativeNormalizeZipPath(
+    target.startsWith("/")
+      ?target.slice(1)
+      :target.startsWith("xl/")
+        ?target
+        :`xl/${target}`
+  );
+  const sheetFile=zip.file(
+    sheetPath
+  );
+
+  if(!sheetFile){
+    throw new Error(
+      "The Vended Maintenance Trends worksheet XML could not be opened."
+    );
+  }
+
+  let sheetXml=await sheetFile.async(
+    "string"
+  );
+
+  if(/<drawing\b/.test(sheetXml)){
+    throw new Error(
+      "The Vended Maintenance Trends worksheet already contains an unexpected drawing."
+    );
+  }
+
+  const drawingNumber=
+    nativeNextPartNumber(
+      zip,
+      /^xl\/drawings\/drawing(\d+)\.xml$/
+    );
+  const firstChartNumber=
+    nativeNextPartNumber(
+      zip,
+      /^xl\/charts\/chart(\d+)\.xml$/
+    );
+  const chartNumbers=
+    chartForecasts.map(
+      (_,index)=>
+        firstChartNumber+index
+    );
+  const drawingPath=
+    `xl/drawings/drawing${drawingNumber}.xml`;
+  const drawingRelsPath=
+    `xl/drawings/_rels/drawing${drawingNumber}.xml.rels`;
+  const sheetRelsPath=
+    sheetPath.replace(
+      /\/([^/]+)$/,
+      "/_rels/$1.rels"
+    );
+  const existingSheetRels=
+    zip.file(sheetRelsPath);
+  let sheetRelsXml=
+    existingSheetRels
+      ?await existingSheetRels.async(
+          "string"
+        )
+      :`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>`;
+  const drawingRelationshipId=
+    nativeNextRelationshipId(
+      sheetRelsXml
+    );
+
+  sheetRelsXml=sheetRelsXml.replace(
+    "</Relationships>",
+    `<Relationship Id="${drawingRelationshipId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing${drawingNumber}.xml"/></Relationships>`
+  );
+
+  if(!/xmlns:r=/.test(sheetXml)){
+    sheetXml=sheetXml.replace(
+      /<worksheet\b/,
+      '<worksheet xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"'
+    );
+  }
+
+  sheetXml=sheetXml.replace(
+    "</worksheet>",
+    `<drawing r:id="${drawingRelationshipId}"/></worksheet>`
+  );
+
+  zip.file(
+    sheetPath,
+    sheetXml
+  );
+  zip.file(
+    sheetRelsPath,
+    sheetRelsXml
+  );
+  zip.file(
+    drawingPath,
+    nativeForecastDrawingXml(
+      chartForecasts.length
+    )
+  );
+  zip.file(
+    drawingRelsPath,
+    nativeForecastDrawingRelsXml(
+      chartNumbers
+    )
+  );
+
+  chartForecasts.forEach(
+    (forecast,index)=>{
+      zip.file(
+        `xl/charts/chart${chartNumbers[index]}.xml`,
+        nativeForecastChartXml(
+          forecast,
+          index,
+          NATIVE_FORECAST_HELPERS[
+            index
+          ]
+        )
+      );
+    }
+  );
+
+  const contentTypesFile=
+    zip.file("[Content_Types].xml");
+
+  if(!contentTypesFile){
+    throw new Error(
+      "The workbook content-type manifest is missing."
+    );
+  }
+
+  let contentTypesXml=
+    await contentTypesFile.async(
+      "string"
+    );
+
+  contentTypesXml=
+    nativeAddContentTypeOverride(
+      contentTypesXml,
+      `/xl/drawings/drawing${drawingNumber}.xml`,
+      "application/vnd.openxmlformats-officedocument.drawing+xml"
+    );
+
+  chartNumbers.forEach(
+    chartNumber=>{
+      contentTypesXml=
+        nativeAddContentTypeOverride(
+          contentTypesXml,
+          `/xl/charts/chart${chartNumber}.xml`,
+          "application/vnd.openxmlformats-officedocument.drawingml.chart+xml"
+        );
+    }
+  );
+
+  zip.file(
+    "[Content_Types].xml",
+    contentTypesXml
+  );
+
+  return zip.generateAsync({
+    type:"arraybuffer",
+    compression:"DEFLATE",
+    compressionOptions:{
+      level:6
+    }
   });
-
-  context.strokeStyle=lineColor;
-  context.lineWidth=3;
-  context.beginPath();
-
-  forecast.points.forEach(
-    (point,index)=>{
-      const position=
-        pointPosition(index);
-
-      if(index===0){
-        context.moveTo(
-          position.x,
-          position.y
-        );
-      }else{
-        context.lineTo(
-          position.x,
-          position.y
-        );
-      }
-    }
-  );
-
-  context.stroke();
-
-  forecast.points.forEach(
-    (_,index)=>{
-      const position=
-        pointPosition(index);
-
-      drawForecastDiamond(
-        context,
-        position.x,
-        position.y,
-        10,
-        lineColor
-      );
-    }
-  );
-
-  context.fillStyle=labelColor;
-  context.textAlign="center";
-
-  forecast.points.forEach(
-    (point,index)=>{
-      const centerX=
-        plotLeft+
-        categoryWidth*
-        (index+0.5);
-      const dateLabel=
-        forecastDateLabel(
-          point.date
-        );
-
-      context.font=
-        "700 10px Arial, sans-serif";
-      context.fillText(
-        point.label,
-        centerX,
-        plotBottom+18
-      );
-
-      context.font=
-        "700 10px Arial, sans-serif";
-
-      if(index===0){
-        context.fillText(
-          dateLabel,
-          centerX,
-          plotBottom+39
-        );
-        context.fillText(
-          "CURRENT",
-          centerX,
-          plotBottom+54
-        );
-      }else{
-        context.fillText(
-          `${dateLabel} DUE`,
-          centerX,
-          plotBottom+39
-        );
-        context.fillText(
-          point.rangeLabel,
-          centerX,
-          plotBottom+54
-        );
-      }
-    }
-  );
-
-  return canvas.toDataURL(
-    "image/png"
-  );
 }
 function triggerWorkbookDownload(
   buffer,
@@ -9490,11 +10109,9 @@ async function writeWorkbookWithTrendCharts(
   );
 
   if(typeof ExcelJS==="undefined"){
-    XLSX.writeFile(
-      workbook,
-      filename
+    throw new Error(
+      "ExcelJS could not load, so the editable Excel charts cannot be created."
     );
-    return;
   }
 
   const excelWorkbook=
@@ -9511,57 +10128,10 @@ async function writeWorkbookWithTrendCharts(
     worksheet&&
     (forecasts||[]).length
   ){
-    const chartPositions=[
-      {
-        col:0,
-        row:0
-      },
-      {
-        col:8,
-        row:0
-      },
-      {
-        col:0,
-        row:18
-      },
-      {
-        col:8,
-        row:18
-      }
-    ];
-
-    forecasts
-      .slice(0,4)
-      .forEach(
-        (forecast,index)=>{
-          const dataUrl=
-            renderComplianceForecastChart(
-              forecast
-            );
-          const imageId=
-            excelWorkbook.addImage({
-              base64:dataUrl,
-              extension:"png"
-            });
-          const position=
-            chartPositions[index];
-
-          worksheet.addImage(
-            imageId,
-            {
-              tl:{
-                col:position.col,
-                row:position.row
-              },
-              ext:{
-                width:760,
-                height:315
-              },
-              editAs:"oneCell"
-            }
-          );
-        }
-      );
+    writeNativeForecastHelperData(
+      worksheet,
+      forecasts
+    );
 
     worksheet.views=[
       {
@@ -9588,8 +10158,13 @@ async function writeWorkbookWithTrendCharts(
     };
   }
 
-  const output=
+  const excelOutput=
     await excelWorkbook.xlsx.writeBuffer();
+  const output=
+    await addNativeForecastCharts(
+      excelOutput,
+      forecasts
+    );
 
   triggerWorkbookDownload(
     output,
@@ -10031,7 +10606,7 @@ async function exportAllTables(){
     setStatus(
       "ok",
       "Workbook export created",
-      "The export includes ECD Slippage, ECD Slippage Detail, and four Vended Maintenance compliance forecast charts using 15% ECD slippage."
+      "The export includes ECD Slippage, ECD Slippage Detail, and four editable native Excel Vended Maintenance compliance forecast charts using 15% ECD slippage."
     );
   }catch(error){
     console.error(
