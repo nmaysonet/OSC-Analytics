@@ -997,6 +997,10 @@
       font-weight:900!important;
     }
 
+    .vendor-section-row td:last-child {
+      text-align:left!important;
+    }
+
     .vendor-section-row:hover td { background:var(--section)!important; }
 
     .under90-selector-cell {
@@ -3074,6 +3078,7 @@ function parseGardaFlash(aoa,warnings){
   };
 
   const vendorTop=[];
+  let vendorTopValueHeader="";
   let readingTopBranches=false;
 
   const numberOrNull=value=>{
@@ -3161,6 +3166,9 @@ function parseGardaFlash(aoa,warnings){
     const vendorKey=flashVendorKey(vendorLabel);
 
     if(vendorKey==="topHeader"){
+      vendorTopValueHeader=
+        String(row[9]??"").trim();
+
       readingTopBranches=true;
       continue;
     }
@@ -3217,6 +3225,9 @@ function parseGardaFlash(aoa,warnings){
       ...vendorWeek,
       prior:{},
       reportedDelta:{},
+      topValueHeader:
+        vendorTopValueHeader||
+        "Total # Unqiue Historical Vendors",
       top:vendorTop.slice(0,10)
     }
   };
@@ -3972,6 +3983,9 @@ async function saveSnapshot(data){if(!db||$("#report-date").value!==localDateKey
   repair:data.vendor.repair,
   pm:data.vendor.pm,
   belowCoverage:data.vendor.belowCoverage,
+  topValueHeader:
+    data.vendor.topValueHeader||
+    "Total # Unqiue Historical Vendors",
   top:(data.vendor.top||[]).map(branch=>({
     name:branch.name,
     current:branch.current
@@ -4499,7 +4513,11 @@ function renderVendor(){
 
   if((vendor.top||[]).length){
     rows+=`<tr class="vendor-section-row">
-      <td colspan="2">Top 10 Branches Needing Vendor Coverage</td>
+      <td>Top 10 Branches Needing Vendor Coverage</td>
+      <td>${escapeHtml(
+        vendor.topValueHeader||
+        "Total # Unqiue Historical Vendors"
+      )}</td>
     </tr>`;
 
     rows+=(vendor.top||[]).map(branch=>`
@@ -4615,6 +4633,7 @@ function makeConsolidatedSheet(sections){
   const rows=[];
   const rowWidths=[];
   const headerRows=new Set();
+  const subheaderRows=new Set();
   const blankRows=new Set();
   const mergedSectionRows=[];
   const typeRows=[];
@@ -4641,6 +4660,14 @@ function makeConsolidatedSheet(sections){
         headerRows.add(start+index);
       }
     });
+
+    (section.subheaderRows||[]).forEach(
+      rowIndex=>{
+        subheaderRows.add(
+          start+rowIndex
+        );
+      }
+    );
 
     (section.types||[]).forEach(
       ([
@@ -4714,6 +4741,8 @@ function makeConsolidatedSheet(sections){
 
       const value=String(rows[row]?.[0]??"");
       const isHeader=headerRows.has(row);
+      const isSubheader=
+        subheaderRows.has(row);
       const isBlankRow=blankRows.has(row);
       const isIndented=
         column===0&&
@@ -4724,21 +4753,33 @@ function makeConsolidatedSheet(sections){
           name:"Raleway",
           sz:10,
           color:{
-            rgb:isHeader
-              ?"111111"
-              :column===0
-                ?"0070C0"
-                :"222222"
+            rgb:
+              isHeader||
+              isSubheader
+                ?"111111"
+                :column===0
+                  ?"0070C0"
+                  :"222222"
           },
-          bold:isHeader||column===0,
-          italic:!isHeader&&isIndented
+          bold:
+            isHeader||
+            isSubheader||
+            column===0,
+          italic:
+            !isHeader&&
+            !isSubheader&&
+            isIndented
         },
         fill:isHeader
           ?{fgColor:{rgb:"D9D9D9"}}
-          :undefined,
+          :isSubheader
+            ?{fgColor:{rgb:"ECEFF2"}}
+            :undefined,
         alignment:{
           horizontal:
-            isHeader||column===0
+            isHeader||
+            isSubheader||
+            column===0
               ?"left"
               :"right",
           vertical:"center",
@@ -5713,7 +5754,8 @@ async function exportGardaTables(){
 
     vendorRows.push([
       "Top 10 Branches Needing Vendor Coverage",
-      null
+      vendor.topValueHeader||
+        "Total # Unqiue Historical Vendors"
     ]);
 
     (vendor.top||[]).forEach(branch=>{
@@ -5777,7 +5819,7 @@ async function exportGardaTables(){
     {
       rows:vendorRows,
       width:2,
-      mergedRows:
+      subheaderRows:
         vendorGroupRow===null
           ?[]
           :[vendorGroupRow]
@@ -5834,32 +5876,53 @@ async function exportGardaTables(){
   );
 
   if(vendorGroupRow!==null){
-    vendorSheet["!merges"]=(
-      vendorSheet["!merges"]||[]
-    ).concat([{
-      s:{r:vendorGroupRow,c:0},
-      e:{r:vendorGroupRow,c:1}
-    }]);
+    for(let column=0;column<=1;column++){
+      const vendorGroupRef=
+        XLSX.utils.encode_cell({
+          r:vendorGroupRow,
+          c:column
+        });
 
-    const vendorGroupRef=XLSX.utils.encode_cell({
-      r:vendorGroupRow,
-      c:0
-    });
-
-    vendorSheet[vendorGroupRef].s={
-      ...(vendorSheet[vendorGroupRef].s||{}),
-      font:{
-        name:"Raleway",
-        sz:10,
-        color:{rgb:"334155"},
-        bold:true
-      },
-      fill:{fgColor:{rgb:"ECEFF2"}},
-      alignment:{
-        horizontal:"left",
-        vertical:"center"
+      if(!vendorSheet[vendorGroupRef]){
+        vendorSheet[vendorGroupRef]={
+          t:"s",
+          v:""
+        };
       }
-    };
+
+      vendorSheet[vendorGroupRef].s={
+        ...(vendorSheet[vendorGroupRef].s||{}),
+        font:{
+          name:"Raleway",
+          sz:10,
+          color:{rgb:"20262D"},
+          bold:true
+        },
+        fill:{fgColor:{rgb:"E8EDF2"}},
+        alignment:{
+          horizontal:"left",
+          vertical:"center"
+        },
+        border:{
+          top:{
+            style:"thin",
+            color:{rgb:"B7B7B7"}
+          },
+          bottom:{
+            style:"thin",
+            color:{rgb:"B7B7B7"}
+          },
+          left:{
+            style:"thin",
+            color:{rgb:"B7B7B7"}
+          },
+          right:{
+            style:"thin",
+            color:{rgb:"B7B7B7"}
+          }
+        }
+      };
+    }
   }
 
   XLSX.utils.book_append_sheet(
