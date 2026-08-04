@@ -7448,7 +7448,9 @@ function emptySlippageGroup(){
     ecdExtensionCount:0,
     crossedPastDueCount:0,
     currentPastDueCount:0,
-    completedOrRemovedCount:0
+    completedOrRemovedCount:0,
+    currentOpenCount:0,
+    currentPastDueOpenCount:0
   };
 }
 function finalizeSlippageGroup(group){
@@ -7485,6 +7487,25 @@ function finalizeSlippageGroup(group){
         ?Number(
             group.currentPastDueCount||0
           )/denominator
+        :null,
+    currentOpenCount:
+      Number(
+        group.currentOpenCount||0
+      ),
+    currentPastDueOpenCount:
+      Number(
+        group.currentPastDueOpenCount||0
+      ),
+    currentPastDueOpenPercent:
+      Number(
+        group.currentOpenCount||0
+      )
+        ?Number(
+            group.currentPastDueOpenCount||0
+          )/
+          Number(
+            group.currentOpenCount||0
+          )
         :null
   };
 }
@@ -7677,8 +7698,21 @@ function buildDailySlippageMetrics(
   let currentPastDueOpenCount=0;
 
   currentItems.forEach(item=>{
+    const programKey=
+      item.program||
+      "unassigned";
+    const programGroup=
+      groupFor(
+        byProgram,
+        programKey
+      );
+
+    programGroup.currentOpenCount++;
+
     if(item.currentBucket==="pastDue"){
       currentPastDueOpenCount++;
+      programGroup
+        .currentPastDueOpenCount++;
     }
   });
 
@@ -8233,6 +8267,142 @@ function buildEcdSlippageRows(events){
 
   return [headers,...rows];
 }
+const VENDED_MAINTENANCE_SLIPPAGE_PROGRAMS=[
+  "pm",
+  "dot",
+  "lts",
+  "ac"
+];
+
+function slippageEventCategory(
+  event
+){
+  const program=String(
+    event?.program||""
+  );
+
+  if(program==="vendedRepair"){
+    return "vendedRepair";
+  }
+
+  if(
+    VENDED_MAINTENANCE_SLIPPAGE_PROGRAMS
+      .includes(program)
+  ){
+    return "vendedMaintenance";
+  }
+
+  return "other";
+}
+
+function aggregateSlippageGroups(
+  groups
+){
+  const aggregate=
+    emptySlippageGroup();
+  let hasCurrentOpenData=false;
+
+  (groups||[])
+    .filter(Boolean)
+    .forEach(group=>{
+      [
+        "cohortCount",
+        "slippedCount",
+        "bucketMovementCount",
+        "ecdExtensionCount",
+        "crossedPastDueCount",
+        "currentPastDueCount",
+        "completedOrRemovedCount"
+      ].forEach(key=>{
+        aggregate[key]+=
+          Number(
+            group[key]||0
+          );
+      });
+
+      if(
+        Object.prototype.hasOwnProperty
+          .call(
+            group,
+            "currentOpenCount"
+          )||
+        Object.prototype.hasOwnProperty
+          .call(
+            group,
+            "currentPastDueOpenCount"
+          )
+      ){
+        hasCurrentOpenData=true;
+
+        aggregate.currentOpenCount+=
+          Number(
+            group.currentOpenCount||0
+          );
+
+        aggregate
+          .currentPastDueOpenCount+=
+          Number(
+            group.currentPastDueOpenCount||0
+          );
+      }
+    });
+
+  const finalized=
+    finalizeSlippageGroup(
+      aggregate
+    );
+
+  if(!hasCurrentOpenData){
+    finalized.currentOpenCount=null;
+    finalized.currentPastDueOpenCount=null;
+    finalized.currentPastDueOpenPercent=null;
+  }
+
+  return finalized;
+}
+
+function categorySlippageMetricsHistory(
+  metricsHistory,
+  category
+){
+  return (metricsHistory||[])
+    .map(metric=>{
+      const byProgram=
+        metric.byProgram||{};
+      const groups=
+        category==="vendedRepair"
+          ?[
+              byProgram.vendedRepair
+            ]
+          :VENDED_MAINTENANCE_SLIPPAGE_PROGRAMS
+            .map(program=>
+              byProgram[program]
+            );
+
+      return {
+        reportDate:
+          metric.reportDate||"",
+        baselineDate:
+          metric.baselineDate||"",
+        ...aggregateSlippageGroups(
+          groups
+        )
+      };
+    });
+}
+
+function categorySlippageEvents(
+  events,
+  category
+){
+  return (events||[])
+    .filter(event=>
+      slippageEventCategory(
+        event
+      )===category
+    );
+}
+
 function buildEcdSlippageSummaryRows(
   metricsHistory
 ){
@@ -8339,25 +8509,71 @@ function appendEcdSlippageSheets(
   metricsHistory,
   events
 ){
+  const repairMetrics=
+    categorySlippageMetricsHistory(
+      metricsHistory,
+      "vendedRepair"
+    );
+  const maintenanceMetrics=
+    categorySlippageMetricsHistory(
+      metricsHistory,
+      "vendedMaintenance"
+    );
+  const repairEvents=
+    categorySlippageEvents(
+      events,
+      "vendedRepair"
+    );
+  const maintenanceEvents=
+    categorySlippageEvents(
+      events,
+      "vendedMaintenance"
+    );
+
   XLSX.utils.book_append_sheet(
     workbook,
     makeSlippageSummarySheet(
-      metricsHistory
+      repairMetrics
     ),
-    "ECD Slippage"
+    "Vended Repair Slippage"
   );
 
   XLSX.utils.book_append_sheet(
     workbook,
     makeDetailSheet(
-      buildEcdSlippageRows(events),
+      buildEcdSlippageRows(
+        repairEvents
+      ),
       [
         14,18,28,20,20,22,32,
         14,14,14,14,20,20,20,
         18,20,20,16,16,32,64
       ]
     ),
-    "ECD Slippage Detail"
+    "Vended Repair Detail"
+  );
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    makeSlippageSummarySheet(
+      maintenanceMetrics
+    ),
+    "Vended Maintenance Slippage"
+  );
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    makeDetailSheet(
+      buildEcdSlippageRows(
+        maintenanceEvents
+      ),
+      [
+        14,18,28,20,20,22,32,
+        14,14,14,14,20,20,20,
+        18,20,20,16,16,32,64
+      ]
+    ),
+    "Vended Maintenance Detail"
   );
 }
 const MAINTENANCE_FORECAST_SLIPPAGE=0.15;
@@ -8679,8 +8895,9 @@ function appendMaintenanceTrendSheet(
 ){
   /*
     The first 38 worksheet rows are intentionally reserved for four
-    editable native Excel charts in a 2×2 layout. Supporting data begins
-    below them.
+    editable native Excel charts in a 2×2 layout. Each chart contains
+    its forecast labels and values directly, while supporting data begins
+    below the charts.
   */
   const chartSpace=Array.from(
     {length:38},
@@ -8942,49 +9159,6 @@ function maintenanceForecastAxis(
   return config;
 }
 
-const NATIVE_FORECAST_HELPERS=[
-  {
-    categoryColumn:24,
-    valueColumn:25
-  },
-  {
-    categoryColumn:26,
-    valueColumn:27
-  },
-  {
-    categoryColumn:28,
-    valueColumn:29
-  },
-  {
-    categoryColumn:30,
-    valueColumn:31
-  }
-];
-
-function excelColumnName(
-  columnNumber
-){
-  let value=columnNumber;
-  let name="";
-
-  while(value>0){
-    const remainder=
-      (value-1)%26;
-
-    name=
-      String.fromCharCode(
-        65+remainder
-      )+
-      name;
-
-    value=Math.floor(
-      (value-1)/26
-    );
-  }
-
-  return name;
-}
-
 function nativeXmlEscape(value){
   return String(
     value??""
@@ -8994,14 +9168,6 @@ function nativeXmlEscape(value){
     .replace(/>/g,"&gt;")
     .replace(/"/g,"&quot;")
     .replace(/'/g,"&apos;");
-}
-
-function nativeRegexEscape(value){
-  return String(value)
-    .replace(
-      /[.*+?^${}()|[\]\\]/g,
-      "\\$&"
-    );
 }
 
 function nativeForecastCategoryLabel(
@@ -9028,102 +9194,31 @@ function nativeForecastCategoryLabel(
   ].join("\n");
 }
 
-function writeNativeForecastHelperData(
-  worksheet,
-  forecasts
-){
-  (forecasts||[])
-    .slice(0,4)
-    .forEach(
-      (forecast,index)=>{
-        const helper=
-          NATIVE_FORECAST_HELPERS[
-            index
-          ];
-
-        worksheet.getCell(
-          1,
-          helper.categoryColumn
-        ).value=
-          `${forecast.programLabel} Category`;
-
-        worksheet.getCell(
-          1,
-          helper.valueColumn
-        ).value=
-          `${forecast.programLabel} Forecast`;
-
-        forecast.points
-          .slice(0,5)
-          .forEach(
-            (point,pointIndex)=>{
-              const row=
-                pointIndex+2;
-              const value=Number(
-                point.projectedCompliance
-              );
-
-              worksheet.getCell(
-                row,
-                helper.categoryColumn
-              ).value=
-                nativeForecastCategoryLabel(
-                  point,
-                  pointIndex
-                );
-
-              worksheet.getCell(
-                row,
-                helper.valueColumn
-              ).value=
-                Number.isFinite(value)
-                  ?value
-                  :0;
-
-              worksheet.getCell(
-                row,
-                helper.valueColumn
-              ).numFmt="0.00%";
-            }
-          );
-
-        worksheet.getColumn(
-          helper.categoryColumn
-        ).hidden=true;
-
-        worksheet.getColumn(
-          helper.valueColumn
-        ).hidden=true;
-      }
-    );
-}
-
-function nativeForecastStringCache(
+function nativeForecastStringPoints(
   labels
 ){
-  return `<c:strCache><c:ptCount val="${labels.length}"/>${
+  return `<c:ptCount val="${labels.length}"/>${
     labels.map(
       (label,index)=>
         `<c:pt idx="${index}"><c:v>${nativeXmlEscape(label)}</c:v></c:pt>`
     ).join("")
-  }</c:strCache>`;
+  }`;
 }
 
-function nativeForecastNumberCache(
+function nativeForecastNumberPoints(
   values
 ){
-  return `<c:numCache><c:formatCode>0.00%</c:formatCode><c:ptCount val="${values.length}"/>${
+  return `<c:formatCode>0.00%</c:formatCode><c:ptCount val="${values.length}"/>${
     values.map(
       (value,index)=>
         `<c:pt idx="${index}"><c:v>${Number(value).toFixed(6)}</c:v></c:pt>`
     ).join("")
-  }</c:numCache>`;
+  }`;
 }
 
 function nativeForecastChartXml(
   forecast,
-  chartIndex,
-  helper
+  chartIndex
 ){
   const labels=forecast.points
     .slice(0,5)
@@ -9146,20 +9241,6 @@ function nativeForecastChartXml(
       forecast.programKey,
       values
     );
-  const categoryColumn=
-    excelColumnName(
-      helper.categoryColumn
-    );
-  const valueColumn=
-    excelColumnName(
-      helper.valueColumn
-    );
-  const sheetName=
-    "Vended Maintenance Trends";
-  const categoryFormula=
-    `'${sheetName}'!$${categoryColumn}$2:$${categoryColumn}$6`;
-  const valueFormula=
-    `'${sheetName}'!$${valueColumn}$2:$${valueColumn}$6`;
   const categoryAxisId=
     50010001+
     chartIndex*10;
@@ -9226,16 +9307,14 @@ function nativeForecastChartXml(
             </c:spPr>
           </c:marker>
           <c:cat>
-            <c:strRef>
-              <c:f>${nativeXmlEscape(categoryFormula)}</c:f>
-              ${nativeForecastStringCache(labels)}
-            </c:strRef>
+            <c:strLit>
+              ${nativeForecastStringPoints(labels)}
+            </c:strLit>
           </c:cat>
           <c:val>
-            <c:numRef>
-              <c:f>${nativeXmlEscape(valueFormula)}</c:f>
-              ${nativeForecastNumberCache(values)}
-            </c:numRef>
+            <c:numLit>
+              ${nativeForecastNumberPoints(values)}
+            </c:numLit>
           </c:val>
           <c:smooth val="0"/>
         </c:ser>
@@ -9711,10 +9790,7 @@ async function addNativeForecastCharts(
         `xl/charts/chart${chartNumbers[index]}.xml`,
         nativeForecastChartXml(
           forecast,
-          index,
-          NATIVE_FORECAST_HELPERS[
-            index
-          ]
+          index
         )
       );
     }
@@ -10128,11 +10204,6 @@ async function writeWorkbookWithTrendCharts(
     worksheet&&
     (forecasts||[]).length
   ){
-    writeNativeForecastHelperData(
-      worksheet,
-      forecasts
-    );
-
     worksheet.views=[
       {
         state:"normal",
@@ -10606,7 +10677,7 @@ async function exportAllTables(){
     setStatus(
       "ok",
       "Workbook export created",
-      "The export includes ECD Slippage, ECD Slippage Detail, and four editable native Excel Vended Maintenance compliance forecast charts using 15% ECD slippage."
+      "The export includes separate Vended Repair and Vended Maintenance ECD Slippage summary/detail tabs, plus four editable native Excel Vended Maintenance compliance forecast charts using 15% ECD slippage."
     );
   }catch(error){
     console.error(
