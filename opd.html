@@ -5612,12 +5612,10 @@ async function exportGardaTables(){
 
   const [
     slippageHistory,
-    slippageMetricsHistory,
-    trendHistory
+    slippageMetricsHistory
   ]=await Promise.all([
     loadEcdSlippageHistory(),
-    loadEcdSlippageMetricsHistory(),
-    loadMaintenanceTrendHistory()
+    loadEcdSlippageMetricsHistory()
   ]);
 
   const wb=XLSX.utils.book_new();
@@ -6051,7 +6049,7 @@ async function exportGardaTables(){
   await writeWorkbookWithTrendCharts(
     wb,
     `Garda_Vended_Operational_Performance_${$("#report-date").value}.xlsx`,
-    trendHistory
+    maintenanceForecastData()
   );
 }
 
@@ -8361,98 +8359,304 @@ function appendEcdSlippageSheets(
     "ECD Slippage Detail"
   );
 }
-function trendHeaders(){
-  const headers=["Date"];
+const MAINTENANCE_FORECAST_SLIPPAGE=0.15;
 
-  PROGRAMS.forEach(program=>{
-    headers.push(
-      `${program.shortLabel||program.label} Compliance %`,
-      `${program.shortLabel||program.label} Overdue Not Scheduled`,
-      `${program.shortLabel||program.label} Scheduling Gap %`
-    );
-  });
+const MAINTENANCE_FORECAST_BUCKETS=[
+  {
+    key:"due03",
+    label:"DUE 0–3 DAYS",
+    rangeLabel:"0–3 DAYS",
+    offsetDays:3
+  },
+  {
+    key:"due47",
+    label:"DUE 4–7 DAYS",
+    rangeLabel:"4–7 DAYS",
+    offsetDays:7
+  },
+  {
+    key:"due814",
+    label:"DUE 8–14 DAYS",
+    rangeLabel:"8–14 DAYS",
+    offsetDays:14
+  },
+  {
+    key:"due14",
+    label:"DUE 14+ DAYS",
+    rangeLabel:"14+ DAYS",
+    monthEnd:true
+  }
+];
 
-  return headers;
+function addForecastDays(date,days){
+  const output=new Date(date);
+  output.setDate(
+    output.getDate()+days
+  );
+  return output;
 }
-function trendDataRows(history){
-  return (history||[]).map(row=>{
-    const output=[row.date];
 
-    PROGRAMS.forEach(program=>{
-      const metric=
-        row.metrics?.[program.key]||{};
+function forecastMonthEnd(date){
+  return new Date(
+    date.getFullYear(),
+    date.getMonth()+1,
+    0
+  );
+}
 
-      output.push(
-        metric.compliance??null,
-        metric.overdueNotScheduled??null,
-        metric.schedulingGap??null
-      );
+function forecastMilestoneDate(
+  reportDate,
+  bucket
+){
+  if(bucket.monthEnd){
+    return forecastMonthEnd(
+      reportDate
+    );
+  }
+
+  return addForecastDays(
+    reportDate,
+    bucket.offsetDays||0
+  );
+}
+
+function forecastDateLabel(value){
+  const date=parseDate(value);
+
+  if(!date){
+    return "";
+  }
+
+  return date
+    .toLocaleDateString(
+      "en-US",
+      {
+        month:"short",
+        day:"numeric",
+        year:"numeric"
+      }
+    )
+    .toUpperCase();
+}
+
+function maintenanceForecastData(){
+  const reportDate=
+    selectedReportDate();
+  const completionRate=
+    1-MAINTENANCE_FORECAST_SLIPPAGE;
+
+  return PROGRAMS.map(program=>{
+    const metric=
+      dashboardData?.maintenance?.[
+        program.key
+      ]||{};
+    const current=Number(
+      metric.compliance
+    );
+    const totalUnits=Number(
+      metric.projection?.totalUnits
+    );
+    const gap=Number(
+      metric.gap
+    );
+    const validCurrent=
+      Number.isFinite(current)
+        ?Math.max(
+            0,
+            Math.min(1,current)
+          )
+        :null;
+    const complianceCeiling=
+      Number.isFinite(gap)
+        ?Math.max(
+            0,
+            Math.min(1,1-gap)
+          )
+        :1;
+
+    const points=[
+      {
+        key:"current",
+        label:"CURRENT",
+        rangeLabel:"CURRENT",
+        date:reportDate,
+        bucketCount:0,
+        creditedCount:0,
+        projectedCompliance:
+          validCurrent
+      }
+    ];
+
+    let projected=
+      validCurrent;
+
+    MAINTENANCE_FORECAST_BUCKETS
+      .forEach(bucket=>{
+        const bucketCount=Math.max(
+          0,
+          Number(
+            metric.ecd?.[bucket.key]||0
+          )
+        );
+        const creditedCount=
+          bucketCount*completionRate;
+
+        if(
+          Number.isFinite(projected)&&
+          Number.isFinite(totalUnits)&&
+          totalUnits>0
+        ){
+          projected=Math.min(
+            complianceCeiling,
+            1,
+            projected+
+              creditedCount/totalUnits
+          );
+        }
+
+        points.push({
+          ...bucket,
+          date:forecastMilestoneDate(
+            reportDate,
+            bucket
+          ),
+          bucketCount,
+          creditedCount,
+          projectedCompliance:
+            Number.isFinite(projected)
+              ?projected
+              :null
+        });
+      });
+
+    return {
+      programKey:program.key,
+      programLabel:
+        program.label,
+      shortLabel:
+        program.shortLabel||
+        program.label,
+      title:
+        upper(program.label),
+      reportDate,
+      slippage:
+        MAINTENANCE_FORECAST_SLIPPAGE,
+      completionRate,
+      currentCompliance:
+        validCurrent,
+      complianceCeiling,
+      schedulingGap:
+        Number.isFinite(gap)
+          ?gap
+          :null,
+      totalUnits:
+        Number.isFinite(totalUnits)
+          ?totalUnits
+          :0,
+      points
+    };
+  });
+}
+
+function maintenanceForecastHeaders(){
+  return [
+    "Program",
+    "Milestone",
+    "Milestone Date",
+    "ECD Bucket Count",
+    "15% Slippage Count",
+    "Credited Completion Count",
+    "Total Active VINs",
+    "Scheduling Gap",
+    "Forecast Compliance"
+  ];
+}
+
+function maintenanceForecastRows(
+  forecasts
+){
+  const rows=[];
+
+  (forecasts||[])
+    .forEach(forecast=>{
+      forecast.points.forEach(point=>{
+        rows.push([
+          forecast.programLabel,
+          point.label,
+          forecastDateLabel(
+            point.date
+          ),
+          Number(
+            point.bucketCount||0
+          ),
+          Number(
+            (
+              point.bucketCount||
+              0
+            )*
+            forecast.slippage
+          ),
+          Number(
+            point.creditedCount||0
+          ),
+          Number(
+            forecast.totalUnits||0
+          ),
+          forecast.schedulingGap,
+          point.projectedCompliance
+        ]);
+      });
     });
 
-    return output;
-  });
+  return rows;
 }
+
 function appendMaintenanceTrendSheet(
   workbook,
-  history
+  forecasts
 ){
-  const titleRow=[
-    "Vended Maintenance Metric Trends"
-  ];
-  const descriptionRow=[
-    "Line charts use the daily Firebase Realtime Database snapshots for the selected customer."
-  ];
+  /*
+    The first 38 worksheet rows are intentionally reserved for the
+    four 2×2 forecast-chart images. Supporting data begins below them.
+  */
   const chartSpace=Array.from(
-    {length:84},
-    ()=>[]
+    {length:38},
+    ()=>[""]
   );
   const rows=[
-    titleRow,
-    descriptionRow,
     ...chartSpace,
-    trendHeaders(),
-    ...trendDataRows(history)
+    maintenanceForecastHeaders(),
+    ...maintenanceForecastRows(
+      forecasts
+    )
   ];
-
   const worksheet=
     XLSX.utils.aoa_to_sheet(rows);
-
-  const headerRowIndex=86;
+  const headerRowIndex=38;
   const range=XLSX.utils.decode_range(
     worksheet["!ref"]||"A1:A1"
   );
 
-  worksheet["!cols"]=trendHeaders()
-    .map((_,index)=>({
-      wch:index===0?14:24
-    }));
+  worksheet["!cols"]=[
+    {wch:24},
+    {wch:20},
+    {wch:18},
+    {wch:18},
+    {wch:18},
+    {wch:24},
+    {wch:18},
+    {wch:18},
+    {wch:22},
+    ...Array.from(
+      {length:7},
+      ()=>({wch:12})
+    )
+  ];
 
-  const titleRef="A1";
-  worksheet[titleRef].s={
-    font:{
-      name:"Raleway",
-      sz:16,
-      bold:true,
-      color:{rgb:"0B1F3A"}
-    },
-    alignment:{
-      horizontal:"left",
-      vertical:"center"
-    }
-  };
-
-  const descriptionRef="A2";
-  worksheet[descriptionRef].s={
-    font:{
-      name:"Raleway",
-      sz:10,
-      color:{rgb:"64748B"}
-    },
-    alignment:{
-      horizontal:"left",
-      vertical:"center"
-    }
-  };
+  worksheet["!rows"]=Array.from(
+    {length:38},
+    ()=>({hpt:18})
+  );
 
   for(
     let column=range.s.c;
@@ -8479,9 +8683,9 @@ function appendMaintenanceTrendSheet(
         fgColor:{rgb:"0B1F3A"}
       },
       alignment:{
-        horizontal:"center",
+        horizontal:"left",
         vertical:"center",
-        wrapText:true
+        wrapText:false
       },
       border:{
         top:{
@@ -8531,12 +8735,16 @@ function appendMaintenanceTrendSheet(
         },
         fill:{
           patternType:"solid",
-          fgColor:{rgb:"FFFFFF"},
-          bgColor:{rgb:"FFFFFF"}
+          fgColor:{
+            rgb:
+              row%2
+                ?"FFFFFF"
+                :"F3F4F6"
+          }
         },
         alignment:{
           horizontal:
-            column===0
+            column<=2
               ?"left"
               :"right",
           vertical:"center"
@@ -8550,11 +8758,17 @@ function appendMaintenanceTrendSheet(
       };
 
       if(
-        column>0&&
-        (column-1)%3!==1&&
+        (column===7||column===8)&&
         typeof worksheet[ref].v==="number"
       ){
         worksheet[ref].z="0.0%";
+      }
+
+      if(
+        (column===4||column===5)&&
+        typeof worksheet[ref].v==="number"
+      ){
+        worksheet[ref].z="0.0";
       }
     }
   }
@@ -8565,54 +8779,122 @@ function appendMaintenanceTrendSheet(
     "Vended Maintenance Trends"
   );
 }
-function chartSeriesColors(){
-  return [
-    "#0B1F3A",
-    "#17365D",
-    "#1F4E78",
-    "#2F75B5",
-    "#5B9BD5",
-    "#6F8096",
-    "#8497B0",
-    "#A9B9CC",
-    "#355C7D",
-    "#203864"
-  ];
-}
-function chartDashPattern(index){
-  return [
-    [],
-    [12,5],
-    [4,4],
-    [14,5,3,5],
-    [2,4],
-    [9,4],
-    [16,5],
-    [6,3,2,3]
-  ][index%8];
-}
-function trendChartHeight(){
-  const legendColumns=Math.min(
-    4,
-    Math.max(1,PROGRAMS.length)
+
+function maintenanceForecastAxis(
+  programKey,
+  values
+){
+  const preferred={
+    pm:{
+      minimum:0.50,
+      maximum:1.00,
+      step:0.05
+    },
+    dot:{
+      minimum:0.93,
+      maximum:0.99,
+      step:0.01
+    },
+    lts:{
+      minimum:0.30,
+      maximum:0.70,
+      step:0.05
+    },
+    ac:{
+      minimum:0.50,
+      maximum:0.68,
+      step:0.02
+    }
+  };
+
+  const fallback={
+    minimum:0,
+    maximum:1,
+    step:0.10
+  };
+  const config={
+    ...(preferred[programKey]||
+       fallback)
+  };
+  const finite=(values||[])
+    .filter(Number.isFinite);
+
+  if(!finite.length){
+    return config;
+  }
+
+  const actualMinimum=Math.min(
+    ...finite
   );
-  const legendRows=Math.ceil(
-    Math.max(1,PROGRAMS.length)/
-    legendColumns
+  const actualMaximum=Math.max(
+    ...finite
   );
 
-  return 470+
-    Math.max(0,legendRows-1)*26;
+  while(
+    actualMinimum<
+      config.minimum
+  ){
+    config.minimum=Math.max(
+      0,
+      config.minimum-
+      config.step
+    );
+  }
+
+  while(
+    actualMaximum>
+      config.maximum
+  ){
+    config.maximum=Math.min(
+      1,
+      config.maximum+
+      config.step
+    );
+
+    if(config.maximum>=1){
+      break;
+    }
+  }
+
+  if(
+    config.maximum<=
+      config.minimum
+  ){
+    config.maximum=Math.min(
+      1,
+      config.minimum+
+      config.step
+    );
+  }
+
+  return config;
 }
-function renderTrendChartDataUrl(
-  history,
-  metricKey,
-  title,
-  yAxisLabel,
-  percentAxis=false
+
+function drawForecastDiamond(
+  context,
+  x,
+  y,
+  size,
+  color
 ){
-  const width=1320;
-  const height=trendChartHeight();
+  context.save();
+  context.translate(x,y);
+  context.rotate(Math.PI/4);
+  context.fillStyle=color;
+  context.fillRect(
+    -size/2,
+    -size/2,
+    size,
+    size
+  );
+  context.restore();
+}
+
+function renderComplianceForecastChart(
+  forecast
+){
+  const width=760;
+  const height=315;
   const canvas=document.createElement(
     "canvas"
   );
@@ -8620,329 +8902,245 @@ function renderTrendChartDataUrl(
   canvas.height=height;
 
   const context=canvas.getContext("2d");
-  const legendColumns=Math.min(
-    4,
-    Math.max(1,PROGRAMS.length)
-  );
-  const legendRows=Math.ceil(
-    Math.max(1,PROGRAMS.length)/
-    legendColumns
-  );
-  const legendRowHeight=25;
-
+  const lineColor="#4F81BD";
+  const borderColor="#202020";
+  const gridColor="#D5D5D5";
+  const labelColor="#111111";
   const margin={
-    left:98,
-    right:42,
-    top:72,
-    bottom:
-      112+
-      legendRows*legendRowHeight
+    left:68,
+    right:8,
+    top:55,
+    bottom:88
   };
-  const plotWidth=
-    width-margin.left-margin.right;
+  const plotLeft=margin.left;
+  const plotRight=
+    width-margin.right;
+  const plotTop=margin.top;
+  const plotBottom=
+    height-margin.bottom;
   const plotHeight=
-    height-margin.top-margin.bottom;
-  const colors=chartSeriesColors();
+    plotBottom-plotTop;
+  const categoryWidth=
+    (plotRight-plotLeft)/5;
+  const values=forecast.points
+    .map(point=>
+      Number(
+        point.projectedCompliance
+      )
+    );
+  const axis=maintenanceForecastAxis(
+    forecast.programKey,
+    values
+  );
+  const axisRange=
+    axis.maximum-axis.minimum;
 
   context.fillStyle="#FFFFFF";
-  context.fillRect(0,0,width,height);
+  context.fillRect(
+    0,
+    0,
+    width,
+    height
+  );
 
-  context.fillStyle="#0B1F3A";
+  context.strokeStyle=borderColor;
+  context.lineWidth=3;
+  context.strokeRect(
+    1.5,
+    1.5,
+    width-3,
+    height-3
+  );
+
+  context.fillStyle=labelColor;
   context.font=
-    "600 23px Arial, sans-serif";
+    "700 23px Arial, sans-serif";
   context.textAlign="center";
   context.fillText(
-    title,
+    forecast.title,
     width/2,
     38
   );
 
-  const values=[];
-
-  history.forEach(row=>{
-    PROGRAMS.forEach(program=>{
-      const value=Number(
-        row.metrics?.[program.key]?.[
-          metricKey
-        ]
-      );
-
-      if(Number.isFinite(value)){
-        values.push(value);
-      }
-    });
-  });
-
-  let maximum=percentAxis
-    ?1
-    :Math.max(
-        1,
-        ...values
-      );
-
-  if(!percentAxis){
-    maximum=Math.max(
-      1,
-      Math.ceil(maximum*1.15)
-    );
-  }
-
-  const yTicks=5;
-
-  context.font=
-    "12px Arial, sans-serif";
+  /*
+    Category separators match the provided example: points are centered
+    inside five equal sections and light vertical lines divide them.
+  */
+  context.strokeStyle=gridColor;
   context.lineWidth=1;
 
-  for(let index=0;index<=yTicks;index++){
-    const value=
-      maximum-
-      (maximum/yTicks)*index;
-    const y=
-      margin.top+
-      (plotHeight/yTicks)*index;
+  for(let index=1;index<5;index++){
+    const x=
+      plotLeft+
+      categoryWidth*index;
 
-    context.strokeStyle="#D9E0E7";
     context.beginPath();
-    context.moveTo(margin.left,y);
+    context.moveTo(
+      x,
+      plotTop
+    );
     context.lineTo(
-      width-margin.right,
-      y
+      x,
+      height-8
     );
     context.stroke();
+  }
 
-    context.fillStyle="#334155";
-    context.textAlign="right";
+  context.strokeStyle="#B8B8B8";
+  context.beginPath();
+  context.moveTo(
+    plotLeft,
+    plotBottom
+  );
+  context.lineTo(
+    plotRight,
+    plotBottom
+  );
+  context.stroke();
+
+  const tickCount=Math.round(
+    axisRange/axis.step
+  );
+
+  context.fillStyle=labelColor;
+  context.font=
+    "700 12px Arial, sans-serif";
+  context.textAlign="right";
+
+  for(
+    let tick=0;
+    tick<=tickCount;
+    tick++
+  ){
+    const value=
+      axis.maximum-
+      tick*axis.step;
+    const y=
+      plotTop+
+      (
+        (axis.maximum-value)/
+        axisRange
+      )*plotHeight;
+
     context.fillText(
-      percentAxis
-        ?`${Math.round(value*100)}%`
-        :Math.round(value).toLocaleString(),
-      margin.left-13,
+      `${(value*100).toFixed(2)}%`,
+      plotLeft-9,
       y+4
     );
   }
 
-  context.strokeStyle="#0B1F3A";
-  context.lineWidth=1.5;
+  const pointPosition=index=>({
+    x:
+      plotLeft+
+      categoryWidth*
+      (index+0.5),
+    y:
+      plotBottom-
+      (
+        (
+          Math.max(
+            axis.minimum,
+            Math.min(
+              axis.maximum,
+              values[index]
+            )
+          )-
+          axis.minimum
+        )/
+        axisRange
+      )*plotHeight
+  });
+
+  context.strokeStyle=lineColor;
+  context.lineWidth=3;
   context.beginPath();
-  context.moveTo(
-    margin.left,
-    margin.top
+
+  forecast.points.forEach(
+    (point,index)=>{
+      const position=
+        pointPosition(index);
+
+      if(index===0){
+        context.moveTo(
+          position.x,
+          position.y
+        );
+      }else{
+        context.lineTo(
+          position.x,
+          position.y
+        );
+      }
+    }
   );
-  context.lineTo(
-    margin.left,
-    margin.top+plotHeight
-  );
-  context.lineTo(
-    width-margin.right,
-    margin.top+plotHeight
-  );
+
   context.stroke();
 
-  context.save();
-  context.translate(
-    27,
-    margin.top+plotHeight/2
-  );
-  context.rotate(-Math.PI/2);
-  context.fillStyle="#0B1F3A";
-  context.font=
-    "600 15px Arial, sans-serif";
-  context.textAlign="center";
-  context.fillText(
-    yAxisLabel,
-    0,
-    0
-  );
-  context.restore();
+  forecast.points.forEach(
+    (_,index)=>{
+      const position=
+        pointPosition(index);
 
-  const pointCount=history.length;
-  const xPosition=index=>{
-    if(pointCount<=1){
-      return margin.left+plotWidth/2;
+      drawForecastDiamond(
+        context,
+        position.x,
+        position.y,
+        10,
+        lineColor
+      );
     }
-
-    return (
-      margin.left+
-      (index/(pointCount-1))*plotWidth
-    );
-  };
-
-  const labelEvery=Math.max(
-    1,
-    Math.ceil(pointCount/8)
   );
 
-  context.font=
-    "11px Arial, sans-serif";
-
-  history.forEach((row,index)=>{
-    if(
-      index%labelEvery!==0&&
-      index!==pointCount-1
-    ){
-      return;
-    }
-
-    const x=xPosition(index);
-    const displayDate=parseDate(row.date);
-    const label=displayDate
-      ?displayDate.toLocaleDateString(
-          "en-US",
-          {
-            month:"short",
-            day:"numeric"
-          }
-        )
-      :row.date;
-
-    context.fillStyle="#334155";
-    context.textAlign="center";
-    context.fillText(
-      label,
-      x,
-      margin.top+plotHeight+22
-    );
-  });
-
-  context.fillStyle="#0B1F3A";
-  context.font=
-    "600 14px Arial, sans-serif";
+  context.fillStyle=labelColor;
   context.textAlign="center";
-  context.fillText(
-    "Report date",
-    margin.left+plotWidth/2,
-    margin.top+plotHeight+50
-  );
 
-  PROGRAMS.forEach((program,seriesIndex)=>{
-    const color=
-      colors[seriesIndex%colors.length];
-    let segmentOpen=false;
+  forecast.points.forEach(
+    (point,index)=>{
+      const centerX=
+        plotLeft+
+        categoryWidth*
+        (index+0.5);
+      const dateLabel=
+        forecastDateLabel(
+          point.date
+        );
 
-    context.strokeStyle=color;
-    context.fillStyle=color;
-    context.lineWidth=
-      seriesIndex===0?3.5:2.7;
-    context.setLineDash(
-      chartDashPattern(seriesIndex)
-    );
-    context.beginPath();
-
-    history.forEach((row,index)=>{
-      const value=Number(
-        row.metrics?.[program.key]?.[
-          metricKey
-        ]
+      context.font=
+        "700 10px Arial, sans-serif";
+      context.fillText(
+        point.label,
+        centerX,
+        plotBottom+18
       );
 
-      if(!Number.isFinite(value)){
-        segmentOpen=false;
-        return;
-      }
+      context.font=
+        "700 10px Arial, sans-serif";
 
-      const x=xPosition(index);
-      const y=
-        margin.top+
-        plotHeight-
-        (
-          Math.max(
-            0,
-            Math.min(maximum,value)
-          )/
-          maximum
-        )*plotHeight;
-
-      if(!segmentOpen){
-        context.moveTo(x,y);
-        segmentOpen=true;
+      if(index===0){
+        context.fillText(
+          dateLabel,
+          centerX,
+          plotBottom+39
+        );
+        context.fillText(
+          "CURRENT",
+          centerX,
+          plotBottom+54
+        );
       }else{
-        context.lineTo(x,y);
+        context.fillText(
+          `${dateLabel} DUE`,
+          centerX,
+          plotBottom+39
+        );
+        context.fillText(
+          point.rangeLabel,
+          centerX,
+          plotBottom+54
+        );
       }
-    });
-
-    context.stroke();
-    context.setLineDash([]);
-
-    history.forEach((row,index)=>{
-      const value=Number(
-        row.metrics?.[program.key]?.[
-          metricKey
-        ]
-      );
-
-      if(!Number.isFinite(value)){
-        return;
-      }
-
-      const x=xPosition(index);
-      const y=
-        margin.top+
-        plotHeight-
-        (
-          Math.max(
-            0,
-            Math.min(maximum,value)
-          )/
-          maximum
-        )*plotHeight;
-
-      context.beginPath();
-      context.arc(
-        x,
-        y,
-        seriesIndex===0?3.8:3,
-        0,
-        Math.PI*2
-      );
-      context.fill();
-    });
-  });
-
-  const legendStartY=
-    margin.top+
-    plotHeight+
-    82;
-  const legendItemWidth=
-    (width-120)/legendColumns;
-
-  context.font=
-    "12px Arial, sans-serif";
-  context.textAlign="left";
-
-  PROGRAMS.forEach((program,index)=>{
-    const rowIndex=Math.floor(
-      index/legendColumns
-    );
-    const columnIndex=
-      index%legendColumns;
-    const x=
-      60+
-      columnIndex*legendItemWidth;
-    const y=
-      legendStartY+
-      rowIndex*legendRowHeight;
-    const color=
-      colors[index%colors.length];
-
-    context.strokeStyle=color;
-    context.lineWidth=3;
-    context.setLineDash(
-      chartDashPattern(index)
-    );
-    context.beginPath();
-    context.moveTo(x,y-4);
-    context.lineTo(x+27,y-4);
-    context.stroke();
-    context.setLineDash([]);
-
-    context.fillStyle="#1F2937";
-    context.fillText(
-      program.shortLabel||
-        program.label,
-      x+36,
-      y
-    );
-  });
+    }
+  );
 
   return canvas.toDataURL(
     "image/png"
@@ -9284,11 +9482,11 @@ function convertSheetJsWorkbookToExcelJs(
 async function writeWorkbookWithTrendCharts(
   workbook,
   filename,
-  trendHistory
+  forecasts
 ){
   appendMaintenanceTrendSheet(
     workbook,
-    trendHistory
+    forecasts
   );
 
   if(typeof ExcelJS==="undefined"){
@@ -9299,11 +9497,6 @@ async function writeWorkbookWithTrendCharts(
     return;
   }
 
-  /*
-    Build the ExcelJS workbook directly from the in-memory worksheets.
-    The prior SheetJS -> XLSX binary -> ExcelJS round-trip caused Excel
-    to report damaged workbook content.
-  */
   const excelWorkbook=
     convertSheetJsWorkbookToExcelJs(
       workbook
@@ -9316,74 +9509,83 @@ async function writeWorkbookWithTrendCharts(
 
   if(
     worksheet&&
-    (trendHistory||[]).length
+    (forecasts||[]).length
   ){
-    const charts=[
+    const chartPositions=[
       {
-        metricKey:"compliance",
-        title:
-          "Vended Maintenance Compliance Trend",
-        yAxisLabel:"Compliance %",
-        percentAxis:true,
-        topRow:2
+        col:0,
+        row:0
       },
       {
-        metricKey:"overdueNotScheduled",
-        title:
-          "Overdue Maintenance Not Scheduled",
-        yAxisLabel:
-          "Unique overdue VINs",
-        percentAxis:false,
-        topRow:30
+        col:8,
+        row:0
       },
       {
-        metricKey:"schedulingGap",
-        title:
-          "Vended Maintenance Scheduling Gap",
-        yAxisLabel:"Scheduling gap %",
-        percentAxis:true,
-        topRow:58
+        col:0,
+        row:18
+      },
+      {
+        col:8,
+        row:18
       }
     ];
 
-    charts.forEach(chartConfig=>{
-      const dataUrl=
-        renderTrendChartDataUrl(
-          trendHistory,
-          chartConfig.metricKey,
-          chartConfig.title,
-          chartConfig.yAxisLabel,
-          chartConfig.percentAxis
-        );
+    forecasts
+      .slice(0,4)
+      .forEach(
+        (forecast,index)=>{
+          const dataUrl=
+            renderComplianceForecastChart(
+              forecast
+            );
+          const imageId=
+            excelWorkbook.addImage({
+              base64:dataUrl,
+              extension:"png"
+            });
+          const position=
+            chartPositions[index];
 
-      const imageId=
-        excelWorkbook.addImage({
-          base64:dataUrl,
-          extension:"png"
-        });
-
-      worksheet.addImage(
-        imageId,
-        {
-          tl:{
-            col:0,
-            row:chartConfig.topRow
-          },
-          ext:{
-            width:1320,
-            height:trendChartHeight()
-          },
-          editAs:"oneCell"
+          worksheet.addImage(
+            imageId,
+            {
+              tl:{
+                col:position.col,
+                row:position.row
+              },
+              ext:{
+                width:760,
+                height:315
+              },
+              editAs:"oneCell"
+            }
+          );
         }
       );
-    });
 
     worksheet.views=[
       {
         state:"normal",
-        showGridLines:false
+        showGridLines:false,
+        activeCell:"A1"
       }
     ];
+
+    worksheet.pageSetup={
+      orientation:"landscape",
+      fitToPage:true,
+      fitToWidth:1,
+      fitToHeight:1,
+      paperSize:9,
+      margins:{
+        left:0.2,
+        right:0.2,
+        top:0.2,
+        bottom:0.2,
+        header:0,
+        footer:0
+      }
+    };
   }
 
   const output=
@@ -9640,12 +9842,10 @@ async function exportCustomerMaintenance(){
 
   const [
     slippageHistory,
-    slippageMetricsHistory,
-    trendHistory
+    slippageMetricsHistory
   ]=await Promise.all([
     loadEcdSlippageHistory(),
-    loadEcdSlippageMetricsHistory(),
-    loadMaintenanceTrendHistory()
+    loadEcdSlippageMetricsHistory()
   ]);
 
   const wb=XLSX.utils.book_new();
@@ -9805,7 +10005,7 @@ async function exportCustomerMaintenance(){
   await writeWorkbookWithTrendCharts(
     wb,
     `${fileLabel}_Vended_Operational_Performance_${$("#report-date").value}.xlsx`,
-    trendHistory
+    maintenanceForecastData()
   );
 }
 async function exportAllTables(){
@@ -9819,7 +10019,7 @@ async function exportAllTables(){
     setStatus(
       "loading",
       "Building workbook export",
-      "Loading ECD slippage history and maintenance trend snapshots from Firebase Realtime Database…"
+      "Loading ECD slippage history and building the 15% maintenance compliance forecast…"
     );
 
     if(activeCustomerKey==="garda"){
@@ -9831,7 +10031,7 @@ async function exportAllTables(){
     setStatus(
       "ok",
       "Workbook export created",
-      "The export includes ECD Slippage percentage, ECD Slippage Detail, and Vended Maintenance Trends tabs."
+      "The export includes ECD Slippage, ECD Slippage Detail, and four Vended Maintenance compliance forecast charts using 15% ECD slippage."
     );
   }catch(error){
     console.error(
