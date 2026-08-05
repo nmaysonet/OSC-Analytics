@@ -733,8 +733,8 @@
       min-width:104px;
     }
 
-    .col-memo {
-      width:205px;
+    .col-vro-status {
+      width:185px;
     }
 
     .col-problem {
@@ -785,6 +785,46 @@
     .asset-detail strong {
       color:#172b43;
       font-weight:900;
+    }
+
+    .vro-status-stack {
+      display:flex;
+      flex-direction:column;
+      align-items:flex-start;
+      gap:7px;
+      min-width:0;
+    }
+
+    .vro-status-row {
+      display:flex;
+      flex-direction:column;
+      align-items:flex-start;
+      gap:2px;
+      min-width:0;
+    }
+
+    .vro-status-badge {
+      display:inline-flex;
+      align-items:center;
+      min-height:23px;
+      max-width:100%;
+      padding:2px 8px;
+      border:1px solid #aeb8c2;
+      border-radius:999px;
+      background:#edf2f7;
+      color:#23364b;
+      font-size:8px;
+      font-weight:900;
+      line-height:1.25;
+      white-space:normal;
+    }
+
+    .vro-status-order {
+      color:#6b7786;
+      font-size:8px;
+      font-weight:800;
+      line-height:1.25;
+      overflow-wrap:anywhere;
     }
 
     .cell-lines {
@@ -946,6 +986,26 @@
 
     .ecd-past {
       color:var(--red);
+    }
+
+    .ecd-changed,
+    .ecd-error {
+      color:var(--red)!important;
+    }
+
+    .ecd-error {
+      cursor:help;
+      text-decoration:underline dotted;
+      text-underline-offset:3px;
+    }
+
+    .ecd-prior {
+      margin-top:3px;
+      color:var(--red);
+      font-size:8px;
+      font-weight:800;
+      line-height:1.3;
+      white-space:pre-line;
     }
 
     .empty-state {
@@ -1186,7 +1246,7 @@
       <div class="title">
         <h1>Garda Below 90% Reporting</h1>
         <p>
-          Live VRO-level reporting for approved vended branches
+          Live OOS-order reporting for approved vended branches
           below 90% usefulness
         </p>
       </div>
@@ -1313,9 +1373,9 @@
               font-weight:700;
             "
           >
-            Firebase history is displayed at one row per OOS unit.
-            VRO details remain internal so saved notes and dropdown selections
-            can return when the same open work reappears.
+            Each row is driven only by the order or orders categorized
+            as OOS on the OOS RO tab. OOS-order ECD changes are retained in
+            Firebase so prior dates remain available when the workbook updates.
           </div>
 
           <div class="table-wrap">
@@ -1327,7 +1387,7 @@
                   <th class="col-branch">Branch</th>
                   <th class="col-unit">Unit #</th>
                   <th class="col-status">Status</th>
-                  <th class="col-memo">Action/Next Steps</th>
+                  <th class="col-vro-status">VRO Status</th>
                   <th class="col-problem">Problem</th>
                   <th class="col-vendor">Vendor</th>
                   <th class="col-dropdown">Estimate Status</th>
@@ -1913,11 +1973,20 @@ function parseUsefulBranches(
   return all;
 }
 
-function parseOosUnits(aoa){
+function normalizedOrder(value){
+  return upper(value);
+}
+
+function parseOosRoOrders(
+  aoa,
+  warnings
+){
   const map=new Map();
 
   if(!aoa.length){
-    return map;
+    throw new Error(
+      "OOS RO worksheet was not found."
+    );
   }
 
   const header=aoa[0]||[];
@@ -1944,8 +2013,36 @@ function parseOosUnits(aoa){
   const statusIndex=headerIndex(
     header,
     ["OOS","STATUS"],
+    5
+  );
+  const compCodeIndex=headerIndex(
+    header,
+    ["COMP CODE & DESC"],
     8
   );
+  const commentsIndex=headerIndex(
+    header,
+    ["COMMENTS"],
+    9
+  );
+  const ecdIndex=headerIndex(
+    header,
+    ["ETC","ECD"],
+    11
+  );
+  const roCategoryIndex=headerIndex(
+    header,
+    ["RO CATEGORY"],
+    -1
+  );
+  const orderIndex=headerIndex(
+    header,
+    ["RO NUM","RO NUMBER","ORDER"],
+    15
+  );
+
+  let missingUnitRows=0;
+  let missingOrderRows=0;
 
   for(
     let rowIndex=1;
@@ -1953,54 +2050,204 @@ function parseOosUnits(aoa){
     rowIndex++
   ){
     const row=aoa[rowIndex]||[];
+    const unitStatus=upper(
+      row[statusIndex]
+    );
+
+    if(unitStatus!=="OOS"){
+      continue;
+    }
+
+    /*
+      Column F identifies that the asset is OOS. When RO CATEGORY exists,
+      only rows explicitly categorized as OOS identify the order that is
+      responsible for the OOS status. This prevents unrelated open orders
+      on the same OOS unit from populating GU90.
+    */
+    if(
+      roCategoryIndex>=0&&
+      upper(row[roCategoryIndex])!=="OOS"
+    ){
+      continue;
+    }
+
     const branchCode=extractBranchCode(
       row[branchIndex]
     );
     const unit=normalizedUnit(
       row[unitIndex]
     );
+    const order=clean(
+      row[orderIndex]
+    );
 
     if(
-      !unit||
       !APPROVED_CODES.has(branchCode)
     ){
       continue;
     }
 
-    const incomingStatus=
-      upper(row[statusIndex])==="OOS"
-        ?"OOS"
-        :"ACTIVE";
-    const existing=map.get(unit);
-
-    /*
-      Match OPD's unique OOS-unit rule. If duplicate source rows exist,
-      an OOS record must not be overwritten by a later Active record.
-    */
-    if(
-      existing?.status==="OOS"&&
-      incomingStatus!=="OOS"
-    ){
+    if(!unit){
+      missingUnitRows++;
       continue;
     }
 
-    map.set(
-      unit,
-      {
+    if(!order){
+      missingOrderRows++;
+      continue;
+    }
+
+    if(!map.has(unit)){
+      map.set(
         unit,
-        branchCode,
-        region:clean(
-          row[regionIndex]
-        ),
-        subregion:clean(
-          row[subregionIndex]
-        ),
-        branch:
-          BRANCH_BY_CODE.get(branchCode)
-            ?.name||
-          clean(row[branchIndex]),
-        status:incomingStatus
-      }
+        {
+          unit,
+          branchCode,
+          region:clean(
+            row[regionIndex]
+          ),
+          subregion:clean(
+            row[subregionIndex]
+          ),
+          branch:
+            BRANCH_BY_CODE.get(branchCode)
+              ?.name||
+            clean(row[branchIndex]),
+          status:"OOS",
+          orderMap:new Map()
+        }
+      );
+    }
+
+    const unitRecord=map.get(unit);
+    const orderKey=normalizedOrder(
+      order
+    );
+
+    if(!unitRecord.orderMap.has(orderKey)){
+      unitRecord.orderMap.set(
+        orderKey,
+        {
+          order,
+          orderKey,
+          ecdValues:new Set(),
+          problemFallback:new Set()
+        }
+      );
+    }
+
+    const orderRecord=
+      unitRecord.orderMap.get(orderKey);
+    const ecd=meaningfulEcdDate(
+      row[ecdIndex]
+    );
+
+    if(ecd){
+      orderRecord.ecdValues.add(
+        dateText(ecd)
+      );
+    }
+
+    const problemFallback=[
+      clean(row[compCodeIndex]),
+      clean(row[commentsIndex])
+    ].filter(Boolean).join("\n");
+
+    if(problemFallback){
+      orderRecord.problemFallback.add(
+        problemFallback
+      );
+    }
+  }
+
+  let conflictUnits=0;
+
+  map.forEach(unitRecord=>{
+    const oosOrders=[
+      ...unitRecord.orderMap.values()
+    ]
+      .map(orderRecord=>{
+        const ecdValues=[
+          ...orderRecord.ecdValues
+        ].sort((a,b)=>
+          String(a).localeCompare(
+            String(b)
+          )
+        );
+        const ecdConflict=
+          ecdValues.length>1;
+
+        return {
+          order:orderRecord.order,
+          orderKey:orderRecord.orderKey,
+          ecdValues,
+          ecd:
+            ecdValues.length===1
+              ?ecdValues[0]
+              :"",
+          ecdConflict,
+          problemFallback:[
+            ...orderRecord.problemFallback
+          ].join("\n")
+        };
+      })
+      .sort((a,b)=>
+        String(a.order).localeCompare(
+          String(b.order)
+        )
+      );
+
+    const orderEcdSignatures=
+      oosOrders.map(order=>
+        order.ecdConflict
+          ?`ERROR:${order.ecdValues.join("|")}`
+          :order.ecd
+      );
+    const ecdError=
+      oosOrders.some(order=>
+        order.ecdConflict
+      )||
+      (
+        oosOrders.length>1&&
+        new Set(
+          orderEcdSignatures
+        ).size>1
+      );
+
+    if(ecdError){
+      conflictUnits++;
+    }
+
+    unitRecord.oosOrders=oosOrders;
+    unitRecord.oosOrderKeySet=new Set(
+      oosOrders.map(order=>
+        order.orderKey
+      )
+    );
+    unitRecord.ecdError=ecdError;
+    unitRecord.ecd=
+      ecdError
+        ?"ERROR"
+        :oosOrders[0]?.ecd||"";
+
+    delete unitRecord.orderMap;
+  });
+
+  if(missingUnitRows){
+    warnings.push(
+      `${missingUnitRows} OOS RO row(s) were excluded because Unit # was blank.`
+    );
+  }
+
+  if(missingOrderRows){
+    warnings.push(
+      `${missingOrderRows} OOS RO row(s) were excluded because RO NUM was blank.`
+    );
+  }
+
+  if(conflictUnits){
+    warnings.push(
+      `${conflictUnits} OOS unit(s) have multiple unmatched ECDs across their OOS orders and are displayed as ERROR.`
     );
   }
 
@@ -2129,8 +2376,7 @@ function parseOpenVros(
   );
 
   const orders=new Map();
-  let missingOrderRows=0;
-  let missingUnitRows=0;
+  let unmatchedOosOrders=0;
 
   for(
     let rowIndex=1;
@@ -2146,6 +2392,27 @@ function parseOpenVros(
       continue;
     }
 
+    const unit=normalizedUnit(
+      row[unitIndex]
+    );
+    const order=clean(
+      row[orderIndex]
+    );
+    const unitRecord=oosMap.get(
+      unit
+    );
+
+    if(
+      !unitRecord||
+      !order||
+      !unitRecord.oosOrderKeySet
+        ?.has(
+          normalizedOrder(order)
+        )
+    ){
+      continue;
+    }
+
     const vroStatus=upper(
       row[vroStatusIndex]
     );
@@ -2154,35 +2421,10 @@ function parseOpenVros(
       continue;
     }
 
-    const order=clean(
-      row[orderIndex]
-    );
-    const unit=normalizedUnit(
-      row[unitIndex]
-    );
-
-    if(!order){
-      missingOrderRows++;
-      continue;
-    }
-
-    if(!unit){
-      missingUnitRows++;
-      continue;
-    }
-
-    /*
-      Match open work by Unit # across every Garda VRO. The VRO customer
-      branch may differ from the current OOS GARDA branch, so it must not
-      be used to discard an otherwise valid unit-level ECD.
-    */
-    const unitRecord=oosMap.get(
-      unit
-    );
     const customerBranchCode=
       extractBranchCode(customer);
     const branchCode=
-      unitRecord?.branchCode||
+      unitRecord.branchCode||
       customerBranchCode;
     const branch=
       usefulMap.get(branchCode);
@@ -2193,23 +2435,21 @@ function parseOpenVros(
       vin:clean(row[vinIndex]),
       unit,
       region:
-        unitRecord?.region||
+        unitRecord.region||
         branch?.region||
         "",
       subregion:
-        unitRecord?.subregion||
+        unitRecord.subregion||
         branch?.subregion||
         "",
       branch:
-        unitRecord?.branch||
+        unitRecord.branch||
         branch?.branch||
         customer,
       branchCode,
       branchUseful:
         branch?.useful??null,
-      assetStatus:
-        unitRecord?.status||
-        "ACTIVE",
+      assetStatus:"OOS",
       vroStatus,
       repclass:clean(
         row[repclassIndex]
@@ -2225,23 +2465,32 @@ function parseOpenVros(
     };
 
     orders.set(
-      order,
+      normalizedOrder(order),
       mergeVroRecord(
-        orders.get(order),
+        orders.get(
+          normalizedOrder(order)
+        ),
         incoming
       )
     );
   }
 
-  if(missingOrderRows){
-    warnings.push(
-      `${missingOrderRows} open Garda VRO row(s) were excluded because the Order field was blank.`
-    );
-  }
+  /*
+    Identify OOS RO orders that were not found as an open Garda VRO.
+    Their unit rows remain present, but the VRO-sourced fields stay blank.
+  */
+  oosMap.forEach(unitRecord=>{
+    (unitRecord.oosOrders||[])
+      .forEach(order=>{
+        if(!orders.has(order.orderKey)){
+          unmatchedOosOrders++;
+        }
+      });
+  });
 
-  if(missingUnitRows){
+  if(unmatchedOosOrders){
     warnings.push(
-      `${missingUnitRows} open Garda VRO row(s) were excluded because the Unit field was blank.`
+      `${unmatchedOosOrders} OOS RO order(s) were not found in the open Garda VRO Export population.`
     );
   }
 
@@ -2364,6 +2613,12 @@ function groupOpenVrosByUnit(
   usefulMap
 ){
   const units=new Map();
+  const orderByKey=new Map(
+    (orderRows||[]).map(orderRow=>[
+      normalizedOrder(orderRow.order),
+      orderRow
+    ])
+  );
   const under90Codes=new Set(
     [...usefulMap.values()]
       .filter(branch=>
@@ -2374,9 +2629,8 @@ function groupOpenVrosByUnit(
   );
 
   /*
-    Start with every unique OOS GARDA unit at a current below-90 branch.
-    This guarantees GU90 and OPD use the same unit population, including
-    OOS units that do not currently have an open VRO.
+    The OOS RO tab is the source of truth for both the unit population
+    and the exact order or orders responsible for the OOS designation.
   */
   [...oosMap.values()]
     .filter(unitRecord=>
@@ -2389,136 +2643,144 @@ function groupOpenVrosByUnit(
       const branch=usefulMap.get(
         unitRecord.branchCode
       );
-      const base={
-        recordKey:safeFirebaseKey(
-          `UNIT_${unitRecord.branchCode}_${unitRecord.unit}`
-        ),
-        recordType:"unit",
-        unitIdentity:unitRecord.unit,
-        unit:unitRecord.unit,
-        region:
-          unitRecord.region||
-          branch?.region||
-          "",
-        subregion:
-          unitRecord.subregion||
-          branch?.subregion||
-          "",
-        branch:
-          unitRecord.branch||
-          branch?.branch||
-          "",
-        branchCode:
-          unitRecord.branchCode,
-        branchUseful:
-          branch?.useful??null,
-        assetStatus:"OOS",
-        vros:[]
-      };
+      const oosOrderDetails=
+        (unitRecord.oosOrders||[])
+          .map(oosOrder=>{
+            const vro=orderByKey.get(
+              oosOrder.orderKey
+            );
 
-      units.set(
-        unitRecord.unit,
-        base
-      );
-    });
-
-  /*
-    Enrich each OOS unit with all open Garda VROs matched by Unit #,
-    regardless of the branch written on the VRO.
-  */
-  (orderRows||[]).forEach(orderRow=>{
-    const unitRecord=units.get(
-      normalizedUnit(orderRow.unit)
-    );
-
-    if(!unitRecord){
-      return;
-    }
-
-    const orderEcds=Array.isArray(
-      orderRow.ecds
-    )
-      ?orderRow.ecds
-      :[orderRow.ecd];
-
-    unitRecord.vros.push({
-      order:clean(orderRow.order),
-      vin:clean(orderRow.vin),
-      vroStatus:clean(orderRow.vroStatus),
-      repclass:clean(orderRow.repclass),
-      problem:clean(orderRow.problemSource),
-      vendor:clean(orderRow.vendor),
-      ecds:uniqueValues(orderEcds),
-      opened:dateText(orderRow.opened)
-    });
-  });
-
-  return [...units.values()]
-    .map(unitRecord=>{
-      unitRecord.vros.sort((a,b)=>
-        String(a.order).localeCompare(
-          String(b.order)
-        )
-      );
+            return {
+              order:oosOrder.order,
+              orderKey:oosOrder.orderKey,
+              ecd:oosOrder.ecd,
+              ecdValues:
+                oosOrder.ecdValues||[],
+              ecdConflict:
+                Boolean(
+                  oosOrder.ecdConflict
+                ),
+              vroStatus:clean(
+                vro?.vroStatus
+              ),
+              vin:clean(vro?.vin),
+              repclass:clean(
+                vro?.repclass
+              ),
+              problem:clean(
+                vro?.problemSource||
+                oosOrder.problemFallback
+              ),
+              vendor:clean(vro?.vendor),
+              opened:dateText(
+                vro?.opened
+              )
+            };
+          });
 
       const orders=uniqueValues(
-        unitRecord.vros.map(vro=>vro.order)
-      );
-      const vins=uniqueValues(
-        unitRecord.vros.map(vro=>vro.vin)
-      );
-      const statuses=uniqueValues(
-        unitRecord.vros.map(
-          vro=>vro.vroStatus
+        oosOrderDetails.map(
+          detail=>detail.order
         )
       );
-      const repclasses=uniqueValues(
-        unitRecord.vros.map(
-          vro=>vro.repclass
+      const statuses=uniqueValues(
+        oosOrderDetails.map(
+          detail=>detail.vroStatus
         )
       );
       const vendors=uniqueValues(
-        unitRecord.vros.map(
-          vro=>vro.vendor
+        oosOrderDetails.map(
+          detail=>detail.vendor
         )
       );
-      const allEcds=uniqueValues(
-        unitRecord.vros.flatMap(
-          vro=>vro.ecds||[]
+      const repclasses=uniqueValues(
+        oosOrderDetails.map(
+          detail=>detail.repclass
+        )
+      );
+      const vins=uniqueValues(
+        oosOrderDetails.map(
+          detail=>detail.vin
         )
       );
 
-      return {
-        ...unitRecord,
-        orders,
-        order:orders.join(" | "),
-        vins,
-        vin:vins.join(" | "),
-        vroStatuses:statuses,
-        vroStatus:statuses.join(" | "),
-        repclasses,
-        repclass:repclasses.join(" | "),
-        problemSource:unitRecord.vros
-          .map(vro=>vro.problem)
-          .filter(Boolean)
-          .join("\n"),
-        vendor:vendors.join("\n"),
-        ecds:allEcds,
-        ecd:latestAvailableEcdText(
-          allEcds
-        ),
-        openedDates:uniqueValues(
-          unitRecord.vros.map(
-            vro=>vro.opened
+      units.set(
+        unitRecord.unit,
+        {
+          recordKey:safeFirebaseKey(
+            `UNIT_${unitRecord.branchCode}_${unitRecord.unit}`
+          ),
+          recordType:"unit",
+          unitIdentity:unitRecord.unit,
+          unit:unitRecord.unit,
+          region:
+            unitRecord.region||
+            branch?.region||
+            "",
+          subregion:
+            unitRecord.subregion||
+            branch?.subregion||
+            "",
+          branch:
+            unitRecord.branch||
+            branch?.branch||
+            "",
+          branchCode:
+            unitRecord.branchCode,
+          branchUseful:
+            branch?.useful??null,
+          assetStatus:"OOS",
+          orders,
+          order:orders.join(" | "),
+          vins,
+          vin:vins.join(" | "),
+          vroStatuses:statuses,
+          vroStatus:statuses.join(" | "),
+          repclasses,
+          repclass:repclasses.join(" | "),
+          problemSource:oosOrderDetails
+            .map(detail=>detail.problem)
+            .filter(Boolean)
+            .join("\n"),
+          vendor:vendors.join("\n"),
+          ecdError:Boolean(
+            unitRecord.ecdError
+          ),
+          ecdErrorMessage:
+            "Multiple unmatched ECDs for OOS Orders)",
+          ecd:
+            unitRecord.ecdError
+              ?"ERROR"
+              :clean(unitRecord.ecd),
+          oosOrderDetails,
+          oosOrderEcds:
+            oosOrderDetails.map(
+              detail=>({
+                order:detail.order,
+                ecd:detail.ecd,
+                ecdValues:
+                  detail.ecdValues||[],
+                ecdConflict:
+                  Boolean(
+                    detail.ecdConflict
+                  )
+              })
+            ),
+          openedDates:uniqueValues(
+            oosOrderDetails.map(
+              detail=>detail.opened
+            )
+          ),
+          opened:earliestDateText(
+            oosOrderDetails.map(
+              detail=>detail.opened
+            )
           )
-        ),
-        opened:earliestDateText(
-          unitRecord.vros.map(
-            vro=>vro.opened
-          )
-        )
-      };
-    })
+        }
+      );
+    });
+
+  return [...units.values()]
     .sort((a,b)=>
       String(a.region).localeCompare(
         String(b.region)
@@ -2577,8 +2839,6 @@ function mergeEditableRecordValues(records){
   }
 
   return {
-    actionNextSteps:
-      mergedText("actionNextSteps"),
     problem:mergedText("problem"),
     notes:mergedText("notes"),
     vendorName:mergedText("vendorName"),
@@ -2605,9 +2865,9 @@ function parseWorkbook(buffer){
     workbook,
     name=>name.trim()==="useful %"
   );
-  const oos=sheetAoa(
+  const oosRo=sheetAoa(
     workbook,
-    name=>name.includes("oos garda")
+    name=>name.trim()==="oos ro"
   );
   const vro=sheetAoa(
     workbook,
@@ -2618,8 +2878,9 @@ function parseWorkbook(buffer){
     useful.aoa,
     warnings
   );
-  oosByUnit=parseOosUnits(
-    oos.aoa
+  oosByUnit=parseOosRoOrders(
+    oosRo.aoa,
+    warnings
   );
 
   const orderRows=parseOpenVros(
@@ -2646,9 +2907,6 @@ function parseWorkbook(buffer){
 
 function recordEditableValues(record){
   return {
-    actionNextSteps:clean(
-      record?.actionNextSteps
-    ),
     problem:clean(
       record?.problem
     ),
@@ -2675,6 +2933,21 @@ function comparableRecord(record){
     state:record.state||"",
     recordType:record.recordType||"",
     orders:recordOrders(record),
+    oosOrderDetails:
+      (record.oosOrderDetails||[])
+        .map(detail=>({
+          order:detail.order||"",
+          ecd:detail.ecd||"",
+          ecdValues:
+            detail.ecdValues||[],
+          ecdConflict:
+            Boolean(
+              detail.ecdConflict
+            ),
+          vroStatus:
+            detail.vroStatus||"",
+          vendor:detail.vendor||""
+        })),
     vins:Array.isArray(record.vins)
       ?record.vins
       :uniqueValues([record.vin]),
@@ -2691,9 +2964,13 @@ function comparableRecord(record){
     problemSource:
       record.problemSource||"",
     vendor:record.vendor||"",
-    ecdDisplay:
-      record.ecdDisplay||
-      dateText(record.ecd),
+    ecd:record.ecd||"",
+    ecdError:
+      Boolean(record.ecdError),
+    ecdChanged:
+      Boolean(record.ecdChanged),
+    priorEcdDisplay:
+      record.priorEcdDisplay||"",
     openedDisplay:
       record.openedDisplay||
       dateText(record.opened),
@@ -2702,6 +2979,170 @@ function comparableRecord(record){
       record.returnUseful??null
   });
 }
+function oosOrderTrackingKey(order){
+  return safeFirebaseKey(
+    `RO_${normalizedOrder(order)}`
+  );
+}
+
+function trackedEcdText(value){
+  if(upper(value)==="ERROR"){
+    return "ERROR";
+  }
+
+  const date=meaningfulEcdDate(
+    value
+  );
+
+  return date
+    ?dateText(date)
+    :clean(value);
+}
+
+function buildOosEcdTracking(
+  row,
+  existing,
+  nowIso
+){
+  const previous=
+    existing?.oosEcdTracking||{};
+  const tracking={};
+  const history={
+    ...(existing?.oosEcdHistory||{})
+  };
+  const currentKeys=new Set();
+  const priorValues=[];
+  let ecdChanged=false;
+  let lastEcdChangedAt=
+    clean(existing?.lastEcdChangedAt);
+
+  (row.oosOrderDetails||[])
+    .forEach(detail=>{
+      const key=oosOrderTrackingKey(
+        detail.order
+      );
+      const prior=previous[key]||null;
+      const currentEcd=
+        detail.ecdConflict
+          ?"ERROR"
+          :trackedEcdText(
+              detail.ecd
+            );
+      const hasPrior=
+        prior&&
+        Object.prototype.hasOwnProperty
+          .call(
+            prior,
+            "currentEcd"
+          );
+      const priorCurrent=
+        hasPrior
+          ?trackedEcdText(
+              prior.currentEcd
+            )
+          :"";
+      const changed=
+        Boolean(
+          hasPrior&&
+          priorCurrent!==currentEcd
+        );
+      const priorEcd=
+        changed
+          ?priorCurrent
+          :trackedEcdText(
+              prior?.priorEcd
+            );
+      const changedAt=
+        changed
+          ?nowIso
+          :clean(prior?.changedAt);
+
+      currentKeys.add(key);
+
+      tracking[key]={
+        order:clean(detail.order),
+        currentEcd,
+        priorEcd,
+        changedAt,
+        lastSeenAt:nowIso,
+        active:true,
+        ecdValues:
+          detail.ecdValues||[],
+        ecdConflict:
+          Boolean(
+            detail.ecdConflict
+          )
+      };
+
+      if(changed){
+        const historyKey=
+          safeFirebaseKey(
+            `${nowIso}_${detail.order}`
+          );
+
+        history[historyKey]={
+          order:clean(detail.order),
+          priorEcd:priorCurrent,
+          currentEcd,
+          changedAt:nowIso
+        };
+      }
+
+      /*
+        Preserve the latest changed pair on the unit row until another
+        change occurs. This keeps the new ECD red and the prior ECD visible.
+      */
+      if(
+        changedAt&&
+        priorEcd!==currentEcd
+      ){
+        ecdChanged=true;
+        priorValues.push(
+          priorEcd||"Blank"
+        );
+
+        if(
+          !lastEcdChangedAt||
+          changedAt>lastEcdChangedAt
+        ){
+          lastEcdChangedAt=
+            changedAt;
+        }
+      }
+    });
+
+  /*
+    Retain inactive per-order tracking entries so Firebase still shows
+    the last known ECD for an OOS order after that order falls off.
+  */
+  Object.entries(previous)
+    .forEach(([key,value])=>{
+      if(currentKeys.has(key)){
+        return;
+      }
+
+      tracking[key]={
+        ...value,
+        active:false
+      };
+    });
+
+  return {
+    oosEcdTracking:tracking,
+    oosEcdHistory:history,
+    ecdChanged:
+      Boolean(
+        ecdChanged&&
+        !row.ecdError
+      ),
+    priorEcdDisplay:
+      uniqueValues(
+        priorValues
+      ).join(" | "),
+    lastEcdChangedAt
+  };
+}
+
 async function synchronizeTrackingRecords(
   parsedRows,
   existingRecords
@@ -2754,11 +3195,19 @@ async function synchronizeTrackingRecords(
       mergeEditableRecordValues(
         editableSources
       );
+    const ecdTracking=
+      buildOosEcdTracking(
+        row,
+        directExisting,
+        nowIso
+      );
 
     const next={
       ...(directExisting||{}),
       ...row,
       ...editable,
+      ...ecdTracking,
+      actionNextSteps:null,
       recordType:"unit",
       state:"active",
       firstSeenUnder90:
@@ -2782,7 +3231,19 @@ async function synchronizeTrackingRecords(
           directExisting
         )
       )!==
-      JSON.stringify(editable)
+      JSON.stringify(editable)||
+      JSON.stringify(
+        directExisting?.oosEcdTracking||{}
+      )!==
+      JSON.stringify(
+        next.oosEcdTracking||{}
+      )||
+      JSON.stringify(
+        directExisting?.oosEcdHistory||{}
+      )!==
+      JSON.stringify(
+        next.oosEcdHistory||{}
+      )
     ){
       updates[row.recordKey]=next;
     }
@@ -3181,18 +3642,56 @@ function htmlLines(value){
 function assetCell(record){
   return `<div class="unit-main">${escapeHtml(record.unit||"—")}</div>`;
 }
+function vendorSourceValues(record){
+  return uniqueValues(
+    String(record?.vendor||"")
+      .split(/\n|\s*\|\s*/)
+  );
+}
+
+function vendorIsRequiredSource(value){
+  const normalized=upper(value);
+
+  return (
+    normalized.includes(
+      "CREDIT CARD"
+    )||
+    normalized===
+      "DEFAULT BLANKET VENDOR - SYSTEM USE ONLY (DO NOT BILL)"
+  );
+}
+
 function vendorRequiresName(record){
-  return upper(
-    record?.vendor
-  ).includes("CREDIT CARD");
+  return vendorSourceValues(record)
+    .some(vendorIsRequiredSource);
+}
+
+function vendorRequiredSources(record){
+  return vendorSourceValues(record)
+    .filter(vendorIsRequiredSource);
+}
+
+function vendorStandardSources(record){
+  return vendorSourceValues(record)
+    .filter(value=>
+      !vendorIsRequiredSource(value)
+    );
 }
 
 function vendorDashboardName(record){
-  if(!vendorRequiresName(record)){
-    return clean(record?.vendor);
+  const values=vendorStandardSources(
+    record
+  );
+  const override=clean(
+    record?.vendorName
+  );
+
+  if(override){
+    values.push(override);
   }
 
-  return clean(record?.vendorName);
+  return uniqueValues(values)
+    .join("\n");
 }
 
 function vendorExportName(record){
@@ -3200,10 +3699,20 @@ function vendorExportName(record){
     return clean(record?.vendor);
   }
 
-  return (
-    clean(record?.vendorName)||
+  const values=vendorStandardSources(
+    record
+  );
+  const override=clean(
+    record?.vendorName
+  );
+
+  values.push(
+    override||
     "VENDOR NAME REQUIRED"
   );
+
+  return uniqueValues(values)
+    .join("\n");
 }
 
 function vendorCell(record){
@@ -3211,10 +3720,27 @@ function vendorCell(record){
     return `<div class="cell-lines">${htmlLines(record.vendor||"—")}</div>`;
   }
 
-  const vendorName=vendorDashboardName(record);
+  const vendorName=clean(
+    record?.vendorName
+  );
+  const standardSources=
+    vendorStandardSources(record);
+  const requiredSources=
+    vendorRequiredSources(record);
   const missing=!vendorName;
+  const displayLines=[
+    ...standardSources
+  ];
 
-  return `<div class="vendor-required-cell"><div class="vendor-required-copy"><div class="vendor-required-name ${missing?"missing":""}"><span class="vendor-required-star">*</span>${missing?"Enter Vendor Name":escapeHtml(vendorName)}</div><div class="vendor-source-note">Source vendor: CREDIT CARD</div></div><button class="memo-btn" type="button" data-memo-record="${escapeHtml(record.recordKey)}" data-memo-field="vendorName" title="Enter required Vendor Name">${memoIcon()}</button></div>`;
+  if(vendorName){
+    displayLines.push(vendorName);
+  }
+
+  return `<div class="vendor-required-cell"><div class="vendor-required-copy">${
+    displayLines.length
+      ?`<div class="cell-lines">${htmlLines(displayLines.join("\n"))}</div>`
+      :""
+  }<div class="vendor-required-name ${missing?"missing":""}"><span class="vendor-required-star">*</span>${missing?"Enter Vendor Name":escapeHtml(vendorName)}</div><div class="vendor-source-note">Source vendor: ${escapeHtml(requiredSources.join(" | "))}</div></div><button class="memo-btn" type="button" data-memo-record="${escapeHtml(record.recordKey)}" data-memo-field="vendorName" title="Enter required Vendor Name">${memoIcon()}</button></div>`;
 }
 
 function memoIcon(){
@@ -3283,6 +3809,73 @@ function dropdownCell(
   </select>`;
 }
 
+function displayVroStatus(value){
+  const normalized=upper(value);
+
+  if(normalized==="UNASSIGNED ROS"){
+    return "UNASSIGNED";
+  }
+
+  return normalized||"NOT FOUND";
+}
+
+function vroStatusDetails(record){
+  const details=
+    Array.isArray(
+      record?.oosOrderDetails
+    )
+      ?record.oosOrderDetails
+      :[];
+
+  if(details.length){
+    return details.map(detail=>({
+      order:clean(detail.order),
+      status:displayVroStatus(
+        detail.vroStatus
+      )
+    }));
+  }
+
+  return uniqueValues(
+    String(record?.vroStatus||"")
+      .split(/\n|\s*\|\s*/)
+  ).map(status=>({
+    order:"",
+    status:displayVroStatus(status)
+  }));
+}
+
+function vroStatusCell(record){
+  const details=vroStatusDetails(
+    record
+  );
+
+  if(!details.length){
+    return `<span class="vro-status-badge">NOT FOUND</span>`;
+  }
+
+  return `<div class="vro-status-stack">${details.map(detail=>`
+    <div class="vro-status-row">
+      <span class="vro-status-badge">${escapeHtml(detail.status)}</span>
+      ${
+        detail.order
+          ?`<span class="vro-status-order">RO ${escapeHtml(detail.order)}</span>`
+          :""
+      }
+    </div>
+  `).join("")}</div>`;
+}
+
+function vroStatusExport(record){
+  return vroStatusDetails(record)
+    .map(detail=>
+      detail.order
+        ?`${detail.order}: ${detail.status}`
+        :detail.status
+    )
+    .join("\n");
+}
+
 function statusBadge(status){
   const normalized=upper(status)==="OOS"?"OOS":"ACTIVE";
 
@@ -3301,14 +3894,28 @@ function statusCell(record){
   );
 }
 function ecdCell(record){
+  if(record?.ecdError){
+    return `<span class="ecd-main ecd-error" title="${escapeHtml(record.ecdErrorMessage||"Multiple unmatched ECDs for OOS Orders)")}">ERROR</span>`;
+  }
+
   const date=meaningfulEcdDate(
     record?.ecd
   );
   const overdue=
     date&&
     date<startOfToday();
+  const changed=Boolean(
+    record?.ecdChanged
+  );
+  const prior=clean(
+    record?.priorEcdDisplay
+  );
 
-  return `<span class="ecd-main ${overdue?"ecd-past":""}">${date?escapeHtml(dateText(date)):"—"}</span>`;
+  return `<div><span class="ecd-main ${overdue?"ecd-past":""} ${changed?"ecd-changed":""}">${date?escapeHtml(dateText(date)):"—"}</span>${
+    changed&&prior
+      ?`<div class="ecd-prior">Prior ECD: ${escapeHtml(prior)}</div>`
+      :""
+  }</div>`;
 }
 function renderRows(){
   const rows=currentRows();
@@ -3348,12 +3955,7 @@ function renderRows(){
       </td>
       <td>${assetCell(record)}</td>
       <td>${statusCell(record)}</td>
-      <td>
-        ${memoCell(
-          record,
-          "actionNextSteps"
-        )}
-      </td>
+      <td>${vroStatusCell(record)}</td>
       <td>
         ${memoCell(
           record,
@@ -3471,8 +4073,6 @@ function openMemo(
   }
 
   const titleByField={
-    actionNextSteps:
-      "Action / Next Steps",
     problem:"Problem",
     vendorName:"Vendor Name * Required",
     notes:"Notes"
@@ -3496,7 +4096,7 @@ function openMemo(
 
   $("#memo-textarea").placeholder=
     field==="vendorName"
-      ?"Enter the actual vendor name used for this CREDIT CARD repair."
+      ?"Enter the actual vendor name used for this repair."
       :"Enter update...";
 
   $("#memo-modal").classList.add(
@@ -3597,7 +4197,7 @@ async function loadReport(){
     setStatus(
       "",
       "Processing below-90% reporting",
-      "Identifying below-90 branches, every OOS GARDA unit, and all open Garda VROs by Unit #..."
+      "Identifying below-90 branches, OOS-tagging orders from OOS RO, and their matching open Garda VROs..."
     );
 
     const parsed=parseWorkbook(buffer);
@@ -3681,6 +4281,31 @@ function exportValue(record,field){
   return clean(record[field]);
 }
 
+function exportEcdValue(record){
+  if(record?.ecdError){
+    return "ERROR";
+  }
+
+  const date=meaningfulEcdDate(
+    record?.ecd
+  );
+  const current=date
+    ?dateText(date)
+    :"";
+  const prior=clean(
+    record?.priorEcdDisplay
+  );
+
+  if(
+    record?.ecdChanged&&
+    prior
+  ){
+    return `${current||"—"}\nPrior ECD: ${prior}`;
+  }
+
+  return date||"";
+}
+
 function exportRows(rows,isArchive=false){
   return rows.map(record=>{
     const baseRow=[
@@ -3689,12 +4314,12 @@ function exportRows(rows,isArchive=false){
       record.branch||"",
       record.unit||"",
       record.assetStatus||"OOS",
-      exportValue(record,"actionNextSteps"),
+      vroStatusExport(record),
       exportValue(record,"problem"),
       vendorExportName(record),
       record.estimateStatus||"",
       record.partsStatus||"",
-      parseDate(record.ecd)||"",
+      exportEcdValue(record),
       record.holdUpIssue||"",
       exportValue(record,"notes")
     ];
@@ -3716,7 +4341,7 @@ function excelHeaders(isArchive=false){
     "BRANCH",
     "UNIT #",
     "STATUS",
-    "ACTION/NEXT STEPS",
+    "VRO STATUS",
     "PROBLEM",
     "VENDOR",
     "ESTIMATE STATUS",
@@ -3741,8 +4366,8 @@ function excelColumnWidths(isArchive=false){
     the header labels remain fully readable on one line.
   */
   const widths=[
-    20,22,28,17,14,44,44,
-    30,26,22,17,21,44
+    20,22,28,17,14,28,44,
+    30,26,22,24,21,44
   ];
 
   if(isArchive){
