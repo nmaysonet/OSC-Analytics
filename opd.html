@@ -9297,7 +9297,9 @@ function nativeForecastChartXml(
         </c:rich>
       </c:tx>
       <c:layout/>
+      <c:overlay val="0"/>
     </c:title>
+    <c:autoTitleDeleted val="0"/>
     <c:plotArea>
       <c:layout/>
       <c:lineChart>
@@ -9353,6 +9355,7 @@ function nativeForecastChartXml(
         <c:scaling>
           <c:orientation val="minMax"/>
         </c:scaling>
+        <c:delete val="0"/>
         <c:axPos val="b"/>
         <c:majorGridlines>
           <c:spPr>
@@ -9363,18 +9366,21 @@ function nativeForecastChartXml(
             </a:ln>
           </c:spPr>
         </c:majorGridlines>
-        <c:tickLblPos val="low"/>
-        <c:spPr>
-          <a:ln>
-            <a:noFill/>
-          </a:ln>
-        </c:spPr>
+        <c:numFmt formatCode="General" sourceLinked="1"/>
+        <c:majorTickMark val="none"/>
+        <c:minorTickMark val="none"/>
+        <c:tickLblPos val="nextTo"/>
+        <c:tickLblSkip val="1"/>
+        <c:tickMarkSkip val="1"/>
         <c:txPr>
-          <a:bodyPr/>
+          <a:bodyPr anchorCtr="1"/>
           <a:lstStyle/>
           <a:p>
             <a:pPr>
-              <a:defRPr sz="1000" b="1" baseline="0">
+              <a:defRPr sz="900" b="1">
+                <a:solidFill>
+                  <a:srgbClr val="000000"/>
+                </a:solidFill>
                 <a:latin typeface="Arial"/>
               </a:defRPr>
             </a:pPr>
@@ -9386,8 +9392,7 @@ function nativeForecastChartXml(
         <c:auto val="1"/>
         <c:lblAlgn val="ctr"/>
         <c:lblOffset val="100"/>
-        <c:tickLblSkip val="1"/>
-        <c:tickMarkSkip val="1"/>
+        <c:noMultiLvlLbl val="0"/>
       </c:catAx>
       <c:valAx>
         <c:axId val="${valueAxisId}"/>
@@ -9396,20 +9401,21 @@ function nativeForecastChartXml(
           <c:max val="${axis.maximum}"/>
           <c:min val="${axis.minimum}"/>
         </c:scaling>
+        <c:delete val="0"/>
         <c:axPos val="l"/>
         <c:numFmt formatCode="0.00%" sourceLinked="0"/>
+        <c:majorTickMark val="none"/>
+        <c:minorTickMark val="none"/>
         <c:tickLblPos val="nextTo"/>
-        <c:spPr>
-          <a:ln>
-            <a:noFill/>
-          </a:ln>
-        </c:spPr>
         <c:txPr>
-          <a:bodyPr/>
+          <a:bodyPr anchorCtr="1"/>
           <a:lstStyle/>
           <a:p>
             <a:pPr>
-              <a:defRPr sz="1000" b="1" baseline="0">
+              <a:defRPr sz="900" b="1">
+                <a:solidFill>
+                  <a:srgbClr val="000000"/>
+                </a:solidFill>
                 <a:latin typeface="Arial"/>
               </a:defRPr>
             </a:pPr>
