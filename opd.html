@@ -8829,7 +8829,8 @@ function maintenanceForecastHeaders(){
     "Scheduling Gap",
     "Compliance Ceiling",
     "Slippage-Adjusted Maximum",
-    "Forecast Compliance"
+    "Forecast Compliance",
+    "Chart Axis Label"
   ];
 }
 
@@ -8869,7 +8870,11 @@ function maintenanceForecastRows(
           forecast.schedulingGap,
           forecast.complianceCeiling,
           forecast.slippageAdjustedMaximum,
-          point.projectedCompliance
+          point.projectedCompliance,
+          nativeForecastCategoryLabel(
+            point,
+            forecast.points.indexOf(point)
+          )
         ]);
       });
     });
@@ -8882,13 +8887,13 @@ function appendMaintenanceTrendSheet(
   forecasts
 ){
   /*
-    The first 38 worksheet rows are intentionally reserved for four
+    The first 42 worksheet rows are intentionally reserved for four
     editable native Excel charts in a 2×2 layout. Each chart contains
     its forecast labels and values directly, while supporting data begins
     below the charts.
   */
   const chartSpace=Array.from(
-    {length:38},
+    {length:42},
     ()=>[""]
   );
   const rows=[
@@ -8900,7 +8905,7 @@ function appendMaintenanceTrendSheet(
   ];
   const worksheet=
     XLSX.utils.aoa_to_sheet(rows);
-  const headerRowIndex=38;
+  const headerRowIndex=42;
   const range=XLSX.utils.decode_range(
     worksheet["!ref"]||"A1:A1"
   );
@@ -8918,14 +8923,15 @@ function appendMaintenanceTrendSheet(
     {wch:20},
     {wch:27},
     {wch:22},
+    {wch:34},
     ...Array.from(
-      {length:4},
+      {length:3},
       ()=>({wch:12})
     )
   ];
 
   worksheet["!rows"]=Array.from(
-    {length:38},
+    {length:42},
     ()=>({hpt:18})
   );
 
@@ -9158,6 +9164,15 @@ function nativeXmlEscape(value){
     .replace(/'/g,"&apos;");
 }
 
+function nativeFormulaXmlEscape(value){
+  return String(
+    value??""
+  )
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;");
+}
+
 function nativeForecastCategoryLabel(
   point,
   index
@@ -9169,14 +9184,12 @@ function nativeForecastCategoryLabel(
 
   if(index===0){
     return [
-      "CURRENT",
       dateLabel,
       "CURRENT"
     ].join("\n");
   }
 
   return [
-    point.label,
     `${dateLabel} DUE`,
     point.rangeLabel
   ].join("\n");
@@ -9204,34 +9217,7 @@ function nativeForecastNumberPoints(
   }`;
 }
 
-function nativeForecastAxisTitleXml(
-  text,
-  vertical=false
-){
-  return `<c:title>
-    <c:tx>
-      <c:rich>
-        <a:bodyPr${vertical?' rot="-5400000" vert="horz"':''}/>
-        <a:lstStyle/>
-        <a:p>
-          <a:pPr>
-            <a:defRPr sz="1000" b="1" baseline="0">
-              <a:latin typeface="Arial"/>
-            </a:defRPr>
-          </a:pPr>
-          <a:r>
-            <a:rPr lang="en-US" sz="1000" b="1" baseline="0">
-              <a:latin typeface="Arial"/>
-            </a:rPr>
-            <a:t>${nativeXmlEscape(text)}</a:t>
-          </a:r>
-        </a:p>
-      </c:rich>
-    </c:tx>
-    <c:layout/>
-    <c:overlay val="0"/>
-  </c:title>`;
-}
+
 
 function nativeForecastChartXml(
   forecast,
@@ -9264,10 +9250,31 @@ function nativeForecastChartXml(
   const valueAxisId=
     categoryAxisId+1;
 
+  /*
+    Supporting data begins at row 44:
+      PM   rows 44–48
+      DOT  rows 49–53
+      LTS  rows 54–58
+      A/C  rows 59–63
+
+    Column M contains the exact two-line axis label.
+    Column L contains Forecast Compliance.
+  */
+  const firstDataRow=
+    44+
+    chartIndex*5;
+  const lastDataRow=
+    firstDataRow+4;
+  const sheetName=
+    "Vended Maintenance Trends";
+  const categoryFormula=
+    `'${sheetName}'!$M$${firstDataRow}:$M$${lastDataRow}`;
+  const valueFormula=
+    `'${sheetName}'!$L$${firstDataRow}:$L$${lastDataRow}`;
+
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <c:lang val="en-US"/>
-  <c:roundedCorners val="0"/>
   <c:chart>
     <c:title>
       <c:tx>
@@ -9292,28 +9299,12 @@ function nativeForecastChartXml(
       <c:layout/>
     </c:title>
     <c:plotArea>
-      <c:layout>
-        <c:manualLayout>
-          <c:layoutTarget val="inner"/>
-          <c:xMode val="factor"/>
-          <c:yMode val="factor"/>
-          <c:wMode val="factor"/>
-          <c:hMode val="factor"/>
-          <c:x val="0.13"/>
-          <c:y val="0.10"/>
-          <c:w val="0.82"/>
-          <c:h val="0.70"/>
-        </c:manualLayout>
-      </c:layout>
+      <c:layout/>
       <c:lineChart>
         <c:grouping val="standard"/>
-        <c:varyColors val="0"/>
         <c:ser>
           <c:idx val="0"/>
           <c:order val="0"/>
-          <c:tx>
-            <c:v>${nativeXmlEscape(forecast.programLabel)}</c:v>
-          </c:tx>
           <c:spPr>
             <a:ln w="28575">
               <a:solidFill>
@@ -9336,14 +9327,20 @@ function nativeForecastChartXml(
             </c:spPr>
           </c:marker>
           <c:cat>
-            <c:strLit>
-              ${nativeForecastStringPoints(labels)}
-            </c:strLit>
+            <c:strRef>
+              <c:f>${nativeFormulaXmlEscape(categoryFormula)}</c:f>
+              <c:strCache>
+                ${nativeForecastStringPoints(labels)}
+              </c:strCache>
+            </c:strRef>
           </c:cat>
           <c:val>
-            <c:numLit>
-              ${nativeForecastNumberPoints(values)}
-            </c:numLit>
+            <c:numRef>
+              <c:f>${nativeFormulaXmlEscape(valueFormula)}</c:f>
+              <c:numCache>
+                ${nativeForecastNumberPoints(values)}
+              </c:numCache>
+            </c:numRef>
           </c:val>
           <c:smooth val="0"/>
         </c:ser>
@@ -9357,9 +9354,6 @@ function nativeForecastChartXml(
           <c:orientation val="minMax"/>
         </c:scaling>
         <c:axPos val="b"/>
-        ${nativeForecastAxisTitleXml(
-          "ECD Milestone"
-        )}
         <c:majorGridlines>
           <c:spPr>
             <a:ln w="9525">
@@ -9370,12 +9364,17 @@ function nativeForecastChartXml(
           </c:spPr>
         </c:majorGridlines>
         <c:tickLblPos val="low"/>
+        <c:spPr>
+          <a:ln>
+            <a:noFill/>
+          </a:ln>
+        </c:spPr>
         <c:txPr>
           <a:bodyPr/>
           <a:lstStyle/>
           <a:p>
             <a:pPr>
-              <a:defRPr sz="800" b="1" baseline="0">
+              <a:defRPr sz="1000" b="1" baseline="0">
                 <a:latin typeface="Arial"/>
               </a:defRPr>
             </a:pPr>
@@ -9387,7 +9386,8 @@ function nativeForecastChartXml(
         <c:auto val="1"/>
         <c:lblAlgn val="ctr"/>
         <c:lblOffset val="100"/>
-        <c:noMultiLvlLbl val="0"/>
+        <c:tickLblSkip val="1"/>
+        <c:tickMarkSkip val="1"/>
       </c:catAx>
       <c:valAx>
         <c:axId val="${valueAxisId}"/>
@@ -9397,18 +9397,19 @@ function nativeForecastChartXml(
           <c:min val="${axis.minimum}"/>
         </c:scaling>
         <c:axPos val="l"/>
-        ${nativeForecastAxisTitleXml(
-          "Forecast Compliance",
-          true
-        )}
         <c:numFmt formatCode="0.00%" sourceLinked="0"/>
         <c:tickLblPos val="nextTo"/>
+        <c:spPr>
+          <a:ln>
+            <a:noFill/>
+          </a:ln>
+        </c:spPr>
         <c:txPr>
           <a:bodyPr/>
           <a:lstStyle/>
           <a:p>
             <a:pPr>
-              <a:defRPr sz="900" b="1" baseline="0">
+              <a:defRPr sz="1000" b="1" baseline="0">
                 <a:latin typeface="Arial"/>
               </a:defRPr>
             </a:pPr>
@@ -9431,15 +9432,14 @@ function nativeForecastChartXml(
     </c:plotArea>
     <c:plotVisOnly val="1"/>
     <c:dispBlanksAs val="gap"/>
-    <c:showDLblsOverMax val="0"/>
   </c:chart>
   <c:spPr>
     <a:solidFill>
       <a:srgbClr val="FFFFFF"/>
     </a:solidFill>
-    <a:ln w="19050">
+    <a:ln w="12700">
       <a:solidFill>
-        <a:srgbClr val="202020"/>
+        <a:srgbClr val="D9D9D9"/>
       </a:solidFill>
     </a:ln>
   </c:spPr>
@@ -9459,25 +9459,25 @@ function nativeForecastDrawingXml(
       fromColumn:0,
       fromRow:0,
       toColumn:8,
-      toRow:17
+      toRow:20
     },
     {
       fromColumn:8,
       fromRow:0,
       toColumn:16,
-      toRow:17
+      toRow:20
     },
     {
       fromColumn:0,
-      fromRow:18,
+      fromRow:21,
       toColumn:8,
-      toRow:35
+      toRow:41
     },
     {
       fromColumn:8,
-      fromRow:18,
+      fromRow:21,
       toColumn:16,
-      toRow:35
+      toRow:41
     }
   ];
 
@@ -10713,7 +10713,7 @@ async function exportAllTables(){
     setStatus(
       "ok",
       "Workbook export created",
-      "The export includes separate Vended Repair and Vended Maintenance ECD Slippage summaries by 0–3, 4–7, 8–14, and 14+ day movement buckets, matching detail tabs, and four editable native Excel maintenance forecast charts."
+      "The export includes separate Vended Repair and Vended Maintenance ECD Slippage summaries by movement bucket, matching detail tabs, and four editable native Excel maintenance forecast charts formatted with visible percentage and milestone tick labels."
     );
   }catch(error){
     console.error(
