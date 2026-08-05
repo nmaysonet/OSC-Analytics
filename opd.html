@@ -7443,70 +7443,96 @@ function activeEcdTrackingItems(data){
 function emptySlippageGroup(){
   return {
     cohortCount:0,
+    comparableOpenCount:0,
+    noSlippageCount:0,
     slippedCount:0,
-    bucketMovementCount:0,
-    ecdExtensionCount:0,
-    crossedPastDueCount:0,
-    currentPastDueCount:0,
-    completedOrRemovedCount:0,
-    currentOpenCount:0,
-    currentPastDueOpenCount:0
+    slip03Count:0,
+    slip47Count:0,
+    slip814Count:0,
+    slip14PlusCount:0,
+    completedOrRemovedCount:0
   };
 }
+
+function ecdSlippageBucket(days){
+  const value=Math.max(
+    0,
+    Number(days||0)
+  );
+
+  if(value<=0)return "none";
+  if(value<=3)return "slip03";
+  if(value<=7)return "slip47";
+  if(value<=14)return "slip814";
+  return "slip14Plus";
+}
+
+function ecdSlippageBucketLabel(bucket){
+  return {
+    none:"No ECD Movement",
+    slip03:"0–3 Days",
+    slip47:"4–7 Days",
+    slip814:"8–14 Days",
+    slip14Plus:"14+ Days"
+  }[bucket]||"";
+}
 function finalizeSlippageGroup(group){
-  const denominator=
+  const cohortCount=
     Number(group?.cohortCount||0);
+  const excludedCount=
+    Number(
+      group?.completedOrRemovedCount||0
+    );
+  const comparableOpenCount=
+    Number.isFinite(
+      Number(group?.comparableOpenCount)
+    )&&
+    Number(group?.comparableOpenCount)>0
+      ?Number(group.comparableOpenCount)
+      :Math.max(
+          0,
+          cohortCount-excludedCount
+        );
+  const slippedCount=
+    Number(group?.slippedCount||0);
+  const noSlippageCount=
+    Object.prototype.hasOwnProperty.call(
+      group||{},
+      "noSlippageCount"
+    )
+      ?Number(group.noSlippageCount||0)
+      :Math.max(
+          0,
+          comparableOpenCount-
+          slippedCount
+        );
+
+  const percent=count=>
+    comparableOpenCount
+      ?Number(count||0)/
+        comparableOpenCount
+      :null;
 
   return {
     ...group,
+    cohortCount,
+    comparableOpenCount,
+    completedOrRemovedCount:
+      excludedCount,
+    noSlippageCount,
+    slippedCount,
+    noSlippagePercent:
+      percent(noSlippageCount),
+    slip03Percent:
+      percent(group?.slip03Count),
+    slip47Percent:
+      percent(group?.slip47Count),
+    slip814Percent:
+      percent(group?.slip814Count),
+    slip14PlusPercent:
+      percent(group?.slip14PlusCount),
     slippagePercent:
-      denominator
-        ?Number(group.slippedCount||0)/
-          denominator
-        :null,
-    bucketMovementPercent:
-      denominator
-        ?Number(
-            group.bucketMovementCount||0
-          )/denominator
-        :null,
-    ecdExtensionPercent:
-      denominator
-        ?Number(
-            group.ecdExtensionCount||0
-          )/denominator
-        :null,
-    crossedPastDuePercent:
-      denominator
-        ?Number(
-            group.crossedPastDueCount||0
-          )/denominator
-        :null,
-    currentPastDuePercent:
-      denominator
-        ?Number(
-            group.currentPastDueCount||0
-          )/denominator
-        :null,
-    currentOpenCount:
-      Number(
-        group.currentOpenCount||0
-      ),
-    currentPastDueOpenCount:
-      Number(
-        group.currentPastDueOpenCount||0
-      ),
-    currentPastDueOpenPercent:
-      Number(
-        group.currentOpenCount||0
-      )
-        ?Number(
-            group.currentPastDueOpenCount||0
-          )/
-          Number(
-            group.currentOpenCount||0
-          )
-        :null
+      percent(slippedCount)
   };
 }
 function latestPriorTrackerDate(
@@ -7551,8 +7577,7 @@ function buildDailySlippageMetrics(
           if(
             tracker?.lastObservedDate!==
               baselineDate||
-            !tracker?.lastEcd||
-            !tracker?.lastBucket
+            !tracker?.lastEcd
           ){
             return;
           }
@@ -7571,11 +7596,8 @@ function buildDailySlippageMetrics(
             branch:tracker.branch||"",
             task:tracker.task||"",
             priorEcd:tracker.lastEcd,
-            priorBucket:tracker.lastBucket,
-            priorBucketEnteredDate:
-              tracker.bucketEnteredDate||
-              tracker.firstSeenDate||
-              baselineDate
+            priorBucket:
+              tracker.lastBucket||""
           };
         });
     }
@@ -7583,7 +7605,6 @@ function buildDailySlippageMetrics(
 
   const overall=emptySlippageGroup();
   const byProgram={};
-  const byStartingBucket={};
 
   function groupFor(container,key){
     if(!container[key]){
@@ -7604,20 +7625,27 @@ function buildDailySlippageMetrics(
       return;
     }
 
-    if(result.slipped){
+    group.comparableOpenCount++;
+
+    if(result.slippageDays>0){
       group.slippedCount++;
-    }
-    if(result.bucketMovement){
-      group.bucketMovementCount++;
-    }
-    if(result.ecdExtended){
-      group.ecdExtensionCount++;
-    }
-    if(result.crossedPastDue){
-      group.crossedPastDueCount++;
-    }
-    if(result.currentPastDue){
-      group.currentPastDueCount++;
+
+      const bucket=
+        ecdSlippageBucket(
+          result.slippageDays
+        );
+
+      if(bucket==="slip03"){
+        group.slip03Count++;
+      }else if(bucket==="slip47"){
+        group.slip47Count++;
+      }else if(bucket==="slip814"){
+        group.slip814Count++;
+      }else if(bucket==="slip14Plus"){
+        group.slip14PlusCount++;
+      }
+    }else{
+      group.noSlippageCount++;
     }
   }
 
@@ -7626,95 +7654,38 @@ function buildDailySlippageMetrics(
       const current=
         currentItems.get(trackerKey)||
         null;
+      const slippageDays=
+        current&&baseline.priorEcd
+          ?Math.max(
+              0,
+              dateDiffDays(
+                current.currentEcd,
+                baseline.priorEcd
+              )
+            )
+          :0;
       const result={
         completedOrRemoved:!current,
-        slipped:false,
-        bucketMovement:false,
-        ecdExtended:false,
-        crossedPastDue:false,
-        currentPastDue:false
+        slippageDays
       };
 
-      if(current){
-        result.ecdExtended=
-          Boolean(baseline.priorEcd)&&
-          current.currentEcd>
-            baseline.priorEcd;
-
-        result.bucketMovement=
-          Boolean(
-            baseline.priorBucket
-          )&&
-          ecdBucketRank(
-            current.currentBucket
-          )<
-          ecdBucketRank(
-            baseline.priorBucket
-          );
-
-        result.crossedPastDue=
-          current.currentBucket==="pastDue"&&
-          baseline.priorBucket!=="pastDue";
-
-        result.currentPastDue=
-          current.currentBucket==="pastDue";
-
-        /*
-          Daily slippage includes any prior-cohort item that:
-          - moved into a tighter/worse bucket,
-          - had its ECD extended, or
-          - remains or becomes past due.
-        */
-        result.slipped=
-          result.bucketMovement||
-          result.ecdExtended||
-          result.currentPastDue;
-      }
-
-      incrementGroup(overall,result);
+      incrementGroup(
+        overall,
+        result
+      );
 
       const programKey=
         baseline.program||
         "unassigned";
-      incrementGroup(
-        groupFor(byProgram,programKey),
-        result
-      );
 
-      const startingBucket=
-        baseline.priorBucket||
-        "unknown";
       incrementGroup(
         groupFor(
-          byStartingBucket,
-          startingBucket
+          byProgram,
+          programKey
         ),
         result
       );
     });
-
-  const currentOpenCount=
-    currentItems.size;
-  let currentPastDueOpenCount=0;
-
-  currentItems.forEach(item=>{
-    const programKey=
-      item.program||
-      "unassigned";
-    const programGroup=
-      groupFor(
-        byProgram,
-        programKey
-      );
-
-    programGroup.currentOpenCount++;
-
-    if(item.currentBucket==="pastDue"){
-      currentPastDueOpenCount++;
-      programGroup
-        .currentPastDueOpenCount++;
-    }
-  });
 
   return {
     cohort,
@@ -7722,26 +7693,16 @@ function buildDailySlippageMetrics(
       reportDate:reportDateKey,
       baselineDate,
       updatedAt:new Date().toISOString(),
-      ...finalizeSlippageGroup(overall),
-      currentOpenCount,
-      currentPastDueOpenCount,
-      currentPastDueOpenPercent:
-        currentOpenCount
-          ?currentPastDueOpenCount/
-            currentOpenCount
-          :null,
+      ...finalizeSlippageGroup(
+        overall
+      ),
       byProgram:Object.fromEntries(
         Object.entries(byProgram)
           .map(([key,value])=>[
             key,
-            finalizeSlippageGroup(value)
-          ])
-      ),
-      byStartingBucket:Object.fromEntries(
-        Object.entries(byStartingBucket)
-          .map(([key,value])=>[
-            key,
-            finalizeSlippageGroup(value)
+            finalizeSlippageGroup(
+              value
+            )
           ])
       )
     }
@@ -7784,6 +7745,7 @@ async function logEcdSlippage(data){
     const existingDaily=
       dailyMetricsSnapshot.val()||{};
     const updates={};
+    const dailyEvents={};
     const currentItems=new Map();
 
     activeEcdTrackingItems(data)
@@ -7841,7 +7803,6 @@ async function logEcdSlippage(data){
         const prior=
           existingTrackers[trackerKey]||
           null;
-
         const firstSeenDate=
           prior?.firstSeenDate||
           reportDateKey;
@@ -7857,11 +7818,6 @@ async function logEcdSlippage(data){
         const priorBucket=
           prior?.lastBucket||
           null;
-        const priorBucketEnteredDate=
-          prior?.bucketEnteredDate||
-          prior?.firstSeenDate||
-          reportDateKey;
-
         const ecdExtensionDays=
           priorEcd
             ?Math.max(
@@ -7872,7 +7828,6 @@ async function logEcdSlippage(data){
                 )
               )
             :0;
-
         const totalExtensionDays=Math.max(
           0,
           dateDiffDays(
@@ -7880,58 +7835,10 @@ async function logEcdSlippage(data){
             originalEcd
           )
         );
-
-        const movedIntoTighterBucket=
-          Boolean(priorBucket)&&
-          ecdBucketRank(currentBucket)<
-            ecdBucketRank(priorBucket);
-
-        const bucketSlippageDays=
-          movedIntoTighterBucket
-            ?Math.max(
-                0,
-                dateDiffDays(
-                  reportDateKey,
-                  priorBucketEnteredDate
-                )
-              )
-            :0;
-
-        const daysPastDue=Math.max(
-          0,
-          dateDiffDays(
-            reportDateKey,
-            currentEcd
-          )
-        );
-
-        const eventTypes=[];
-
-        if(ecdExtensionDays>0){
-          eventTypes.push(
-            "ECD Date Extended"
+        const slippageBucket=
+          ecdSlippageBucket(
+            ecdExtensionDays
           );
-        }
-
-        if(movedIntoTighterBucket){
-          eventTypes.push(
-            currentBucket==="pastDue"
-              ?"ECD Bucket Missed"
-              :"Bucket Timeframe Missed"
-          );
-        }
-
-        if(daysPastDue>0){
-          eventTypes.push(
-            "Past Due ECD"
-          );
-        }
-
-        const bucketEnteredDate=
-          priorBucket&&
-          priorBucket===currentBucket
-            ?priorBucketEnteredDate
-            :reportDateKey;
 
         updates[
           `${customerTrackerRoot}/${trackerKey}`
@@ -7954,25 +7861,19 @@ async function logEcdSlippage(data){
           originalBucket,
           lastEcd:currentEcd,
           lastBucket:currentBucket,
-          bucketEnteredDate,
           lastObservedDate:reportDateKey,
           lastObservedAt:
             new Date().toISOString(),
-          totalExtensionDays,
-          daysPastDue
+          totalExtensionDays
         };
 
-        if(eventTypes.length){
-          const slippageDays=Math.max(
-            ecdExtensionDays,
-            totalExtensionDays,
-            bucketSlippageDays,
-            daysPastDue
-          );
-
-          updates[
-            `${customerLogRoot}/${reportDateKey}/${trackerKey}`
-          ]={
+        /*
+          A slippage event is recorded only when the same still-open
+          RO has a later ECD than its previously captured ECD.
+        */
+        if(ecdExtensionDays>0){
+          dailyEvents[trackerKey]={
+            trackerKey,
             loggedAt:new Date().toISOString(),
             reportDate:reportDateKey,
             customerKey:activeCustomerKey,
@@ -7988,7 +7889,12 @@ async function logEcdSlippage(data){
             customer:current.customer,
             branch:current.branch,
             task:current.task,
-            eventType:eventTypes.join("; "),
+            eventType:"ECD Date Slipped",
+            slippageBucket,
+            slippageBucketLabel:
+              ecdSlippageBucketLabel(
+                slippageBucket
+              ),
             firstSeenDate,
             originalEcd,
             priorEcd,
@@ -7996,16 +7902,24 @@ async function logEcdSlippage(data){
             originalBucket,
             priorBucket,
             currentBucket,
-            bucketEnteredDate,
             ecdExtensionDays,
             totalExtensionDays,
-            bucketSlippageDays,
-            daysPastDue,
-            slippageDays
+            slippageDays:
+              ecdExtensionDays
           };
         }
       }
     );
+
+    /*
+      Replace today's entire log node. This removes stale events when an
+      RO is completed, removed, corrected, or no longer has a later ECD.
+    */
+    updates[
+      `${customerLogRoot}/${reportDateKey}`
+    ]=Object.keys(dailyEvents).length
+      ?dailyEvents
+      :null;
 
     if(Object.keys(updates).length){
       await db.ref().update(updates);
@@ -8194,24 +8108,24 @@ function buildEcdSlippageRows(events){
     "VIN",
     "Order",
     "Status",
-    "Event Type",
-    "First Seen",
-    "Original ECD",
+    "Slippage Bucket",
+    "ECD Slippage Days",
     "Prior ECD",
     "Current ECD",
-    "Original Bucket",
-    "Prior Bucket",
-    "Current Bucket",
-    "ECD Extension Days",
+    "Original ECD",
     "Total Extension Days",
-    "Bucket Slippage Days",
-    "Days Past Due",
-    "Slippage Days",
     "Branch",
     "Task"
   ];
 
   const rows=(events||[])
+    .filter(event=>
+      Number(
+        event.ecdExtensionDays||
+        event.slippageDays||
+        0
+      )>0
+    )
     .slice()
     .sort((a,b)=>
       String(a.reportDate).localeCompare(
@@ -8224,46 +8138,42 @@ function buildEcdSlippageRows(events){
         String(b.order)
       )
     )
-    .map(event=>[
-      event.reportDate||"",
-      event.customerLabel||"",
-      event.programLabel||
-        programDisplayLabel(event.program),
-      event.vin||"",
-      event.order||"",
-      event.status||"",
-      event.eventType||"",
-      event.firstSeenDate||"",
-      event.originalEcd||"",
-      event.priorEcd||"",
-      event.currentEcd||"",
-      exportBucketLabel(
-        event.originalBucket
-      ),
-      exportBucketLabel(
-        event.priorBucket
-      ),
-      exportBucketLabel(
-        event.currentBucket
-      ),
-      Number(
-        event.ecdExtensionDays||0
-      ),
-      Number(
-        event.totalExtensionDays||0
-      ),
-      Number(
-        event.bucketSlippageDays||0
-      ),
-      Number(
-        event.daysPastDue||0
-      ),
-      Number(
-        event.slippageDays||0
-      ),
-      event.branch||"",
-      event.task||""
-    ]);
+    .map(event=>{
+      const slippageDays=Number(
+        event.ecdExtensionDays||
+        event.slippageDays||
+        0
+      );
+      const slippageBucket=
+        event.slippageBucket||
+        ecdSlippageBucket(
+          slippageDays
+        );
+
+      return [
+        event.reportDate||"",
+        event.customerLabel||"",
+        event.programLabel||
+          programDisplayLabel(
+            event.program
+          ),
+        event.vin||"",
+        event.order||"",
+        event.status||"",
+        ecdSlippageBucketLabel(
+          slippageBucket
+        ),
+        slippageDays,
+        event.priorEcd||"",
+        event.currentEcd||"",
+        event.originalEcd||"",
+        Number(
+          event.totalExtensionDays||0
+        ),
+        event.branch||"",
+        event.task||""
+      ];
+    });
 
   return [headers,...rows];
 }
@@ -8300,18 +8210,19 @@ function aggregateSlippageGroups(
 ){
   const aggregate=
     emptySlippageGroup();
-  let hasCurrentOpenData=false;
 
   (groups||[])
     .filter(Boolean)
     .forEach(group=>{
       [
         "cohortCount",
+        "comparableOpenCount",
+        "noSlippageCount",
         "slippedCount",
-        "bucketMovementCount",
-        "ecdExtensionCount",
-        "crossedPastDueCount",
-        "currentPastDueCount",
+        "slip03Count",
+        "slip47Count",
+        "slip814Count",
+        "slip14PlusCount",
         "completedOrRemovedCount"
       ].forEach(key=>{
         aggregate[key]+=
@@ -8319,52 +8230,96 @@ function aggregateSlippageGroups(
             group[key]||0
           );
       });
-
-      if(
-        Object.prototype.hasOwnProperty
-          .call(
-            group,
-            "currentOpenCount"
-          )||
-        Object.prototype.hasOwnProperty
-          .call(
-            group,
-            "currentPastDueOpenCount"
-          )
-      ){
-        hasCurrentOpenData=true;
-
-        aggregate.currentOpenCount+=
-          Number(
-            group.currentOpenCount||0
-          );
-
-        aggregate
-          .currentPastDueOpenCount+=
-          Number(
-            group.currentPastDueOpenCount||0
-          );
-      }
     });
 
-  const finalized=
-    finalizeSlippageGroup(
-      aggregate
+  return finalizeSlippageGroup(
+    aggregate
+  );
+}
+
+function slippageBucketCountsFromEvents(
+  events
+){
+  const counts={
+    slippedCount:0,
+    slip03Count:0,
+    slip47Count:0,
+    slip814Count:0,
+    slip14PlusCount:0
+  };
+  const unique=new Map();
+
+  (events||[]).forEach(event=>{
+    const days=Number(
+      event.ecdExtensionDays||
+      event.slippageDays||
+      0
     );
 
-  if(!hasCurrentOpenData){
-    finalized.currentOpenCount=null;
-    finalized.currentPastDueOpenCount=null;
-    finalized.currentPastDueOpenPercent=null;
-  }
+    if(days<=0){
+      return;
+    }
 
-  return finalized;
+    const key=[
+      event.reportDate||"",
+      event.program||"",
+      event.order||"",
+      event.trackerKey||""
+    ].join("|");
+
+    unique.set(
+      key,
+      days
+    );
+  });
+
+  unique.forEach(days=>{
+    counts.slippedCount++;
+
+    const bucket=
+      ecdSlippageBucket(days);
+
+    if(bucket==="slip03"){
+      counts.slip03Count++;
+    }else if(bucket==="slip47"){
+      counts.slip47Count++;
+    }else if(bucket==="slip814"){
+      counts.slip814Count++;
+    }else if(bucket==="slip14Plus"){
+      counts.slip14PlusCount++;
+    }
+  });
+
+  return counts;
 }
 
 function categorySlippageMetricsHistory(
   metricsHistory,
-  category
+  category,
+  events
 ){
+  const categoryEvents=
+    categorySlippageEvents(
+      events,
+      category
+    );
+  const eventsByDate=new Map();
+
+  categoryEvents.forEach(event=>{
+    const dateKey=
+      event.reportDate||"";
+
+    if(!eventsByDate.has(dateKey)){
+      eventsByDate.set(
+        dateKey,
+        []
+      );
+    }
+
+    eventsByDate.get(dateKey)
+      .push(event);
+  });
+
   return (metricsHistory||[])
     .map(metric=>{
       const byProgram=
@@ -8378,15 +8333,48 @@ function categorySlippageMetricsHistory(
             .map(program=>
               byProgram[program]
             );
+      const aggregate=
+        aggregateSlippageGroups(
+          groups
+        );
+      const eventCounts=
+        slippageBucketCountsFromEvents(
+          eventsByDate.get(
+            metric.reportDate||""
+          )||[]
+        );
+      const comparableOpenCount=
+        Number(
+          aggregate.comparableOpenCount||
+          Math.max(
+            0,
+            Number(
+              aggregate.cohortCount||0
+            )-
+            Number(
+              aggregate.completedOrRemovedCount||0
+            )
+          )
+        );
+      const combined=
+        finalizeSlippageGroup({
+          ...aggregate,
+          comparableOpenCount,
+          ...eventCounts,
+          noSlippageCount:
+            Math.max(
+              0,
+              comparableOpenCount-
+              eventCounts.slippedCount
+            )
+        });
 
       return {
         reportDate:
           metric.reportDate||"",
         baselineDate:
           metric.baselineDate||"",
-        ...aggregateSlippageGroups(
-          groups
-        )
+        ...combined
       };
     });
 }
@@ -8399,7 +8387,12 @@ function categorySlippageEvents(
     .filter(event=>
       slippageEventCategory(
         event
-      )===category
+      )===category&&
+      Number(
+        event.ecdExtensionDays||
+        event.slippageDays||
+        0
+      )>0
     );
 }
 
@@ -8408,55 +8401,49 @@ function buildEcdSlippageSummaryRows(
 ){
   const headers=[
     "Report Date",
-    "Baseline Cohort Date",
-    "Prior Open ECDs",
-    "Slipped ECDs",
-    "Daily Slippage %",
-    "Bucket Movement Count",
-    "Bucket Movement %",
-    "ECD Extension Count",
-    "ECD Extension %",
-    "Crossed Past Due Count",
-    "Crossed Past Due %",
-    "Past Due in Prior Cohort",
-    "Past Due Cohort %",
-    "Completed / Removed",
-    "Current Open ECDs",
-    "Current Past Due Open",
-    "Current Past Due Open %"
+    "Baseline Date",
+    "Comparable Open ROs",
+    "No ECD Movement",
+    "No Movement %",
+    "Slipped 0–3 Days",
+    "0–3 Day Slippage %",
+    "Slipped 4–7 Days",
+    "4–7 Day Slippage %",
+    "Slipped 8–14 Days",
+    "8–14 Day Slippage %",
+    "Slipped 14+ Days",
+    "14+ Day Slippage %",
+    "Total Slipped ROs",
+    "Overall Slippage %",
+    "Completed / Removed Excluded"
   ];
 
   const rows=(metricsHistory||[])
     .map(metric=>[
       metric.reportDate||"",
       metric.baselineDate||"",
-      Number(metric.cohortCount||0),
+      Number(
+        metric.comparableOpenCount||0
+      ),
+      Number(
+        metric.noSlippageCount||0
+      ),
+      metric.noSlippagePercent??null,
+      Number(metric.slip03Count||0),
+      metric.slip03Percent??null,
+      Number(metric.slip47Count||0),
+      metric.slip47Percent??null,
+      Number(metric.slip814Count||0),
+      metric.slip814Percent??null,
+      Number(
+        metric.slip14PlusCount||0
+      ),
+      metric.slip14PlusPercent??null,
       Number(metric.slippedCount||0),
       metric.slippagePercent??null,
       Number(
-        metric.bucketMovementCount||0
-      ),
-      metric.bucketMovementPercent??null,
-      Number(
-        metric.ecdExtensionCount||0
-      ),
-      metric.ecdExtensionPercent??null,
-      Number(
-        metric.crossedPastDueCount||0
-      ),
-      metric.crossedPastDuePercent??null,
-      Number(
-        metric.currentPastDueCount||0
-      ),
-      metric.currentPastDuePercent??null,
-      Number(
         metric.completedOrRemovedCount||0
-      ),
-      Number(metric.currentOpenCount||0),
-      Number(
-        metric.currentPastDueOpenCount||0
-      ),
-      metric.currentPastDueOpenPercent??null
+      )
     ]);
 
   return [headers,...rows];
@@ -8471,13 +8458,14 @@ function makeSlippageSummarySheet(
   const worksheet=makeDetailSheet(
     rows,
     [
-      14,20,16,16,18,20,20,20,18,
-      22,20,24,20,20,18,24,24
+      14,16,20,18,18,18,20,18,
+      20,18,22,18,20,20,20,26
     ]
   );
 
-  const percentColumns=
-    [4,6,8,10,12,16];
+  const percentColumns=[
+    4,6,8,10,12,14
+  ];
   const range=XLSX.utils.decode_range(
     worksheet["!ref"]||"A1:A1"
   );
@@ -8512,12 +8500,14 @@ function appendEcdSlippageSheets(
   const repairMetrics=
     categorySlippageMetricsHistory(
       metricsHistory,
-      "vendedRepair"
+      "vendedRepair",
+      events
     );
   const maintenanceMetrics=
     categorySlippageMetricsHistory(
       metricsHistory,
-      "vendedMaintenance"
+      "vendedMaintenance",
+      events
     );
   const repairEvents=
     categorySlippageEvents(
@@ -8545,9 +8535,8 @@ function appendEcdSlippageSheets(
         repairEvents
       ),
       [
-        14,18,28,20,20,22,32,
-        14,14,14,14,20,20,20,
-        18,20,20,16,16,32,64
+        14,18,28,20,20,22,20,
+        18,14,14,14,20,32,64
       ]
     ),
     "Vended Repair Detail"
@@ -8568,9 +8557,8 @@ function appendEcdSlippageSheets(
         maintenanceEvents
       ),
       [
-        14,18,28,20,20,22,32,
-        14,14,14,14,20,20,20,
-        18,20,20,16,16,32,64
+        14,18,28,20,20,22,20,
+        18,14,14,14,20,32,64
       ]
     ),
     "Vended Maintenance Detail"
@@ -9216,6 +9204,35 @@ function nativeForecastNumberPoints(
   }`;
 }
 
+function nativeForecastAxisTitleXml(
+  text,
+  vertical=false
+){
+  return `<c:title>
+    <c:tx>
+      <c:rich>
+        <a:bodyPr${vertical?' rot="-5400000" vert="horz"':''}/>
+        <a:lstStyle/>
+        <a:p>
+          <a:pPr>
+            <a:defRPr sz="1000" b="1" baseline="0">
+              <a:latin typeface="Arial"/>
+            </a:defRPr>
+          </a:pPr>
+          <a:r>
+            <a:rPr lang="en-US" sz="1000" b="1" baseline="0">
+              <a:latin typeface="Arial"/>
+            </a:rPr>
+            <a:t>${nativeXmlEscape(text)}</a:t>
+          </a:r>
+        </a:p>
+      </c:rich>
+    </c:tx>
+    <c:layout/>
+    <c:overlay val="0"/>
+  </c:title>`;
+}
+
 function nativeForecastChartXml(
   forecast,
   chartIndex
@@ -9275,7 +9292,19 @@ function nativeForecastChartXml(
       <c:layout/>
     </c:title>
     <c:plotArea>
-      <c:layout/>
+      <c:layout>
+        <c:manualLayout>
+          <c:layoutTarget val="inner"/>
+          <c:xMode val="factor"/>
+          <c:yMode val="factor"/>
+          <c:wMode val="factor"/>
+          <c:hMode val="factor"/>
+          <c:x val="0.13"/>
+          <c:y val="0.10"/>
+          <c:w val="0.82"/>
+          <c:h val="0.70"/>
+        </c:manualLayout>
+      </c:layout>
       <c:lineChart>
         <c:grouping val="standard"/>
         <c:varyColors val="0"/>
@@ -9328,6 +9357,9 @@ function nativeForecastChartXml(
           <c:orientation val="minMax"/>
         </c:scaling>
         <c:axPos val="b"/>
+        ${nativeForecastAxisTitleXml(
+          "ECD Milestone"
+        )}
         <c:majorGridlines>
           <c:spPr>
             <a:ln w="9525">
@@ -9365,6 +9397,10 @@ function nativeForecastChartXml(
           <c:min val="${axis.minimum}"/>
         </c:scaling>
         <c:axPos val="l"/>
+        ${nativeForecastAxisTitleXml(
+          "Forecast Compliance",
+          true
+        )}
         <c:numFmt formatCode="0.00%" sourceLinked="0"/>
         <c:tickLblPos val="nextTo"/>
         <c:txPr>
@@ -10677,7 +10713,7 @@ async function exportAllTables(){
     setStatus(
       "ok",
       "Workbook export created",
-      "The export includes separate Vended Repair and Vended Maintenance ECD Slippage summary/detail tabs, plus four editable native Excel Vended Maintenance compliance forecast charts using 15% ECD slippage."
+      "The export includes separate Vended Repair and Vended Maintenance ECD Slippage summaries by 0–3, 4–7, 8–14, and 14+ day movement buckets, matching detail tabs, and four editable native Excel maintenance forecast charts."
     );
   }catch(error){
     console.error(
