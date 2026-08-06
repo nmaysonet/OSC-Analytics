@@ -989,13 +989,13 @@
       color:var(--red);
     }
 
-    .ecd-changed {
+    .ecd-main.ecd-changed {
       color:var(--ecd-change-blue)!important;
     }
 
-    .ecd-past,
-    .ecd-past.ecd-changed,
-    .ecd-error {
+    .ecd-main.ecd-late,
+    .ecd-main.ecd-late.ecd-changed,
+    .ecd-main.ecd-error {
       color:var(--red)!important;
     }
 
@@ -4087,17 +4087,25 @@ function ecdCell(record){
   const date=meaningfulEcdDate(
     record?.ecd
   );
-  const overdue=
+  const today=startOfToday();
+  const overdue=Boolean(
     date&&
-    date<startOfToday();
+    date.getTime()<today.getTime()
+  );
   const changed=Boolean(
     record?.ecdChanged
   );
   const prior=clean(
     record?.priorEcdDisplay
   );
+  const currentClass=
+    overdue
+      ?"ecd-late"
+      :changed
+        ?"ecd-changed"
+        :"";
 
-  return `<div><span class="ecd-main ${overdue?"ecd-past":""} ${changed?"ecd-changed":""}">${date?escapeHtml(dateText(date)):"—"}</span>${
+  return `<div><span class="ecd-main ${currentClass}">${date?escapeHtml(dateText(date)):"—"}</span>${
     changed&&prior
       ?`<div class="ecd-prior ${overdue?"ecd-prior-past":""}">Prior ECD: ${escapeHtml(prior)}</div>`
       :""
