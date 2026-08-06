@@ -988,7 +988,12 @@
       color:var(--red);
     }
 
-    .ecd-changed,
+    .ecd-changed {
+      color:var(--blue)!important;
+    }
+
+    .ecd-past,
+    .ecd-past.ecd-changed,
     .ecd-error {
       color:var(--red)!important;
     }
@@ -1001,11 +1006,15 @@
 
     .ecd-prior {
       margin-top:3px;
-      color:var(--red);
+      color:var(--blue);
       font-size:8px;
       font-weight:800;
       line-height:1.3;
       white-space:pre-line;
+    }
+
+    .ecd-prior.ecd-prior-past {
+      color:var(--red);
     }
 
     .empty-state {
@@ -4089,7 +4098,7 @@ function ecdCell(record){
 
   return `<div><span class="ecd-main ${overdue?"ecd-past":""} ${changed?"ecd-changed":""}">${date?escapeHtml(dateText(date)):"—"}</span>${
     changed&&prior
-      ?`<div class="ecd-prior">Prior ECD: ${escapeHtml(prior)}</div>`
+      ?`<div class="ecd-prior ${overdue?"ecd-prior-past":""}">Prior ECD: ${escapeHtml(prior)}</div>`
       :""
   }</div>`;
 }
