@@ -1614,9 +1614,39 @@ function normalizedUnit(value){
 
 function parseDate(value){
   if(value instanceof Date){
-    return Number.isNaN(value.getTime())
-      ?null
-      :value;
+    if(Number.isNaN(value.getTime())){
+      return null;
+    }
+
+    /*
+      SheetJS and ISO date-only values can arrive as midnight UTC.
+      Treat midnight-UTC Date objects as calendar dates so 2026-08-10
+      remains August 10 in every browser timezone.
+    */
+    const isUtcMidnight=
+      value.getUTCHours()===0&&
+      value.getUTCMinutes()===0&&
+      value.getUTCSeconds()===0&&
+      value.getUTCMilliseconds()===0;
+    const localDiffersFromUtc=
+      value.getFullYear()!==value.getUTCFullYear()||
+      value.getMonth()!==value.getUTCMonth()||
+      value.getDate()!==value.getUTCDate();
+
+    if(
+      isUtcMidnight&&
+      localDiffersFromUtc
+    ){
+      return new Date(
+        value.getUTCFullYear(),
+        value.getUTCMonth(),
+        value.getUTCDate()
+      );
+    }
+
+    return new Date(
+      value.getTime()
+    );
   }
 
   if(typeof value==="number"){
@@ -1640,7 +1670,37 @@ function parseDate(value){
     return null;
   }
 
-  const parsed=new Date(value);
+  const text=String(value).trim();
+
+  /*
+    JavaScript parses YYYY-MM-DD as UTC. Build exact calendar-date
+    strings with the local constructor instead.
+  */
+  const isoDateOnly=text.match(
+    /^(\d{4})-(\d{2})-(\d{2})$/
+  );
+
+  if(isoDateOnly){
+    return new Date(
+      Number(isoDateOnly[1]),
+      Number(isoDateOnly[2])-1,
+      Number(isoDateOnly[3])
+    );
+  }
+
+  const usDateOnly=text.match(
+    /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/
+  );
+
+  if(usDateOnly){
+    return new Date(
+      Number(usDateOnly[3]),
+      Number(usDateOnly[1])-1,
+      Number(usDateOnly[2])
+    );
+  }
+
+  const parsed=new Date(text);
 
   return Number.isNaN(parsed.getTime())
     ?null
@@ -2969,6 +3029,10 @@ function comparableRecord(record){
       Boolean(record.ecdError),
     ecdChanged:
       Boolean(record.ecdChanged),
+    ecdDateParserVersion:
+      Number(
+        record.ecdDateParserVersion||0
+      ),
     priorEcdDisplay:
       record.priorEcdDisplay||"",
     openedDisplay:
@@ -3004,6 +3068,13 @@ function buildOosEcdTracking(
   existing,
   nowIso
 ){
+  const ECD_DATE_PARSER_VERSION=2;
+  const priorParserVersion=Number(
+    existing?.ecdDateParserVersion||0
+  );
+  const legacyDateParser=
+    priorParserVersion<
+    ECD_DATE_PARSER_VERSION;
   const previous=
     existing?.oosEcdTracking||{};
   const tracking={};
@@ -3044,6 +3115,7 @@ function buildOosEcdTracking(
       const changed=
         Boolean(
           hasPrior&&
+          !legacyDateParser&&
           priorCurrent!==currentEcd
         );
       const priorEcd=
@@ -3071,7 +3143,9 @@ function buildOosEcdTracking(
         ecdConflict:
           Boolean(
             detail.ecdConflict
-          )
+          ),
+        dateParserVersion:
+          ECD_DATE_PARSER_VERSION
       };
 
       if(changed){
@@ -3128,6 +3202,8 @@ function buildOosEcdTracking(
     });
 
   return {
+    ecdDateParserVersion:
+      ECD_DATE_PARSER_VERSION,
     oosEcdTracking:tracking,
     oosEcdHistory:history,
     ecdChanged:
