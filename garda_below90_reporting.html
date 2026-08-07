@@ -821,11 +821,33 @@
     }
 
     .vro-status-order {
-      color:#6b7786;
       font-size:8px;
-      font-weight:800;
+      font-weight:900;
       line-height:1.25;
       overflow-wrap:anywhere;
+    }
+
+    .vro-link {
+      color:#14863d;
+      text-decoration:underline;
+      text-underline-offset:2px;
+      cursor:pointer;
+    }
+
+    .vro-link:hover {
+      color:#0d682f;
+    }
+
+    .standard-ro {
+      color:#c62828;
+    }
+
+    .ro-type-label {
+      display:inline-block;
+      margin-right:3px;
+      font-size:8px;
+      font-weight:950;
+      letter-spacing:.01em;
     }
 
     .cell-lines {
@@ -2486,11 +2508,6 @@ function parseOpenVros(
     const vroStatus=upper(
       row[vroStatusIndex]
     );
-
-    if(!OPEN_STATUSES.has(vroStatus)){
-      continue;
-    }
-
     const customerBranchCode=
       extractBranchCode(customer);
     const branchCode=
@@ -2531,7 +2548,8 @@ function parseOpenVros(
         row[vendorIndex]
       ),
       ecd:row[ecdIndex],
-      opened:row[openedIndex]
+      opened:row[openedIndex],
+      matchedVroExport:true
     };
 
     orders.set(
@@ -2545,10 +2563,6 @@ function parseOpenVros(
     );
   }
 
-  /*
-    Identify OOS RO orders that were not found as an open Garda VRO.
-    Their unit rows remain present, but the VRO-sourced fields stay blank.
-  */
   oosMap.forEach(unitRecord=>{
     (unitRecord.oosOrders||[])
       .forEach(order=>{
@@ -2560,7 +2574,7 @@ function parseOpenVros(
 
   if(unmatchedOosOrders){
     warnings.push(
-      `${unmatchedOosOrders} OOS RO order(s) were not found in the open Garda VRO Export population.`
+      `${unmatchedOosOrders} OOS RO order(s) were not found in VRO Export and are labeled as Standard ROs.`
     );
   }
 
@@ -2569,6 +2583,7 @@ function parseOpenVros(
   ]
     .map(record=>({
       ...record,
+      matchedVroExport:true,
       problemSource:[
         ...record.tasks
       ].filter(Boolean).join(" | "),
@@ -2823,6 +2838,7 @@ function groupOpenVrosByUnit(
                 Boolean(
                   oosOrder.ecdConflict
                 ),
+              isVendorRo:Boolean(vro),
               vroStatus:clean(
                 vro?.vroStatus
               ),
@@ -3106,6 +3122,10 @@ function comparableRecord(record){
           ecdConflict:
             Boolean(
               detail.ecdConflict
+            ),
+          isVendorRo:
+            Boolean(
+              detail.isVendorRo
             ),
           vroStatus:
             detail.vroStatus||"",
@@ -4018,6 +4038,9 @@ function vroStatusDetails(record){
       order:clean(detail.order),
       status:displayVroStatus(
         detail.vroStatus
+      ),
+      isVendorRo:Boolean(
+        detail.isVendorRo
       )
     }));
   }
@@ -4027,7 +4050,8 @@ function vroStatusDetails(record){
       .split(/\n|\s*\|\s*/)
   ).map(status=>({
     order:"",
-    status:displayVroStatus(status)
+    status:displayVroStatus(status),
+    isVendorRo:false
   }));
 }
 
@@ -4035,30 +4059,45 @@ function vroStatusCell(record){
   const details=vroStatusDetails(
     record
   );
+  const VRO_URL_BASE=
+    "https://afshub.azurewebsites.net/Vendors/VendedRepairOrder/Estimate/";
 
   if(!details.length){
     return `<span class="vro-status-badge">NOT FOUND</span>`;
   }
 
-  return `<div class="vro-status-stack">${details.map(detail=>`
-    <div class="vro-status-row">
-      <span class="vro-status-badge">${escapeHtml(detail.status)}</span>
-      ${
-        detail.order
-          ?`<span class="vro-status-order">RO ${escapeHtml(detail.order)}</span>`
-          :""
-      }
-    </div>
-  `).join("")}</div>`;
+  return `<div class="vro-status-stack">${details.map(detail=>{
+    const order=clean(detail.order);
+    const orderDisplay=escapeHtml(order);
+    const orderMarkup=
+      detail.isVendorRo&&order
+        ?`<a class="vro-status-order vro-link" href="${VRO_URL_BASE}${encodeURIComponent(order)}" target="_blank" rel="noopener noreferrer" title="Open VRO ${orderDisplay} in AFS Hub"><span class="ro-type-label">VRO</span>${orderDisplay}</a>`
+        :order
+          ?`<span class="vro-status-order standard-ro" title="Standard RO - not found in VRO Export"><span class="ro-type-label">RO</span>${orderDisplay}</span>`
+          :"";
+
+    return `
+      <div class="vro-status-row">
+        <span class="vro-status-badge">${escapeHtml(detail.status)}</span>
+        ${orderMarkup}
+      </div>
+    `;
+  }).join("")}</div>`;
 }
 
 function vroStatusExport(record){
   return vroStatusDetails(record)
-    .map(detail=>
-      detail.order
-        ?`${detail.order}: ${detail.status}`
-        :detail.status
-    )
+    .map(detail=>{
+      const prefix=
+        detail.isVendorRo
+          ?"VRO"
+          :"RO";
+      const order=clean(detail.order);
+
+      return order
+        ?`${prefix} ${order}: ${detail.status}`
+        :detail.status;
+    })
     .join("\n");
 }
 
